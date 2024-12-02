@@ -43,34 +43,31 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
 import { Contract } from "ethers";
 
-const deployMafiaGame: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
+const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployer } = await hre.getNamedAccounts();
   const { deploy } = hre.deployments;
+  const pawsyToken = '0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a'
+  const lpToken = '0x96fc64cae162c1cb288791280c3eff2255c330a8'
 
   const treasuryDeployment = await deploy("Treasury", {
     from: deployer,
+    args: [lpToken],
     log: true,
     autoMine: true,
   });
 
   console.log("Treasury deployed to:", treasuryDeployment.address);
 
-  const mafiaGameDeployment = await deploy("MafiaGame", {
+  const vaultDeployment = await deploy("Vault", {
     from: deployer,
-    args: [treasuryDeployment.address],
+    args: [pawsyToken, lpToken, treasuryDeployment.address],
     log: true,
     autoMine: true,
   });
 
-  console.log("MafiaGame deployed to:", mafiaGameDeployment.address);
-  const mafiaGame = await hre.ethers.getContract<Contract>("MafiaGame", deployer);
-  console.log("👋 MafiaGame is ready for interaction: ", await mafiaGame.getAddress());
-
-  const treasury = await hre.ethers.getContractAt("Treasury", treasuryDeployment.address);
-  await treasury.setMafiaGameAddress(mafiaGameDeployment.address);
-  console.log("MafiaGame address set in Treasury:", mafiaGameDeployment.address);
+  console.log("Vault deployed to:", vaultDeployment.address);
 };
 
-export default deployMafiaGame;
+export default deployContracts;
 
-deployMafiaGame.tags = ["MafiaGame"];
+deployContracts.tags = ["StakingContracts"];
