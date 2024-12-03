@@ -57,24 +57,10 @@ contract Lock is Ownable {
 		emit Locked(user, amount, lockPeriod, unlockTime, poolId);
 	}
 
-	/**
-	 * @dev Unlocks the user's tokens if the lock period has expired.
-	 * @param user The address of the user.
-	 * @param index The index of the lock to unlock.
-	 */
 	function unlock(
 		address user,
 		uint256 index
-	)
-		external
-		onlyOwner
-		returns (
-			uint256 amount,
-			uint256 lockPeriod,
-			uint256 poolId,
-			bool isLocked
-		)
-	{
+	) external onlyOwner returns (uint256, uint256, uint256, bool) {
 		require(user != address(0), "Invalid user address");
 		require(index < userLocks[user].length, "Invalid lock index");
 
@@ -82,7 +68,7 @@ contract Lock is Ownable {
 		require(block.timestamp >= lockInfo.unlockTime, "Lock period not over");
 		require(lockInfo.isLocked, "Lock already unlocked");
 
-		lockInfo.isLocked = false; // Mark as unlocked
+		lockInfo.isLocked = false;
 
 		emit Unlocked(user, lockInfo.amount, lockInfo.poolId);
 
@@ -94,15 +80,34 @@ contract Lock is Ownable {
 		);
 	}
 
-	/**
-	 * @dev Fetches all locks for a user.
-	 * @param user The address of the user.
-	 * @return amounts Array of locked amounts.
-	 * @return lockPeriods Array of lock periods.
-	 * @return unlockTimes Array of unlock times.
-	 * @return poolIds Array of pool IDs.
-	 * @return isLockedStatuses Array of lock statuses.
-	 */
+	function calculateRewards(
+		address user,
+		uint256 poolId,
+		uint256 rewardRate,
+		uint256 lastClaimTime
+	) external view returns (uint256) {
+		uint256 totalRewards = 0;
+		uint256 currentTime = block.timestamp;
+
+		for (uint256 i = 0; i < userLocks[user].length; i++) {
+			LockInfo memory lockInfo = userLocks[user][i];
+
+			if (lockInfo.poolId != poolId || !lockInfo.isLocked) continue;
+
+			uint256 stakingTime = currentTime -
+				(
+					lastClaimTime > 0
+						? lastClaimTime
+						: lockInfo.unlockTime - lockInfo.lockPeriod
+				);
+			totalRewards +=
+				(lockInfo.amount * rewardRate * stakingTime) /
+				(lockInfo.lockPeriod * 10000);
+		}
+
+		return totalRewards;
+	}
+
 	function getLocks(
 		address user
 	)

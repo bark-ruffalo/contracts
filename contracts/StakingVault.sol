@@ -15,6 +15,12 @@ interface ILock {
 		address user,
 		uint256 index
 	) external returns (uint256, uint256, uint256, bool);
+	function calculateRewards(
+		address user,
+		uint256 poolId,
+		uint256 rewardRate,
+		uint256 lastClaimTime
+	) external returns (uint256);
 }
 
 interface IRewardToken {
@@ -34,6 +40,7 @@ contract StakingVault is Ownable {
 	IRewardToken public rewardToken; // Reference to the rewards token
 
 	mapping(address => uint256) public lifetimeRewards; // Tracks total rewards earned by each address
+	mapping(address => mapping(uint256 => uint256)) public lastClaimTime; // Last reward claim timestamp per user per pool
 
 	event Staked(
 		address indexed user,
@@ -47,11 +54,13 @@ contract StakingVault is Ownable {
 		uint256 amount,
 		uint256 reward
 	);
+	event RewardsClaimed(
+		address indexed user,
+		uint256 indexed poolId,
+		uint256 amount
+	);
 
-	constructor(
-		address _lockContract,
-		address _rewardToken
-	) Ownable(msg.sender) {
+	constructor(address _lockContract, address _rewardToken) Ownable() {
 		lockContract = ILock(_lockContract);
 		rewardToken = IRewardToken(_rewardToken);
 	}
@@ -88,13 +97,7 @@ contract StakingVault is Ownable {
 		require(pool.isActive, "Pool is not active");
 
 		// Determine reward rate
-		uint256 rewardRate = 0;
-		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
-			if (pool.lockPeriods[i] == _lockPeriod) {
-				rewardRate = pool.rewardRates[i];
-				break;
-			}
-		}
+		uint256 rewardRate = getRewardRate(poolId, _lockPeriod);
 		require(rewardRate > 0, "Invalid lock period");
 
 		// Transfer staking tokens to contract
@@ -103,10 +106,15 @@ contract StakingVault is Ownable {
 		// Lock tokens
 		lockContract.lock(msg.sender, _amount, _lockPeriod, poolId);
 
+		// Set initial claim time
+		if (lastClaimTime[msg.sender][poolId] == 0) {
+			lastClaimTime[msg.sender][poolId] = block.timestamp;
+		}
+
 		emit Staked(msg.sender, poolId, _amount, _lockPeriod);
 	}
 
-	// Unstake tokens
+	// Unstake tokens and claim rewards
 	function unstake(uint256 poolId, uint256 index) external {
 		require(poolId < pools.length, "Invalid pool ID");
 		Pool storage pool = pools[poolId];
@@ -116,41 +124,64 @@ contract StakingVault is Ownable {
 			.unlock(msg.sender, index);
 		require(!locked, "Lock period not yet over");
 
-		// Determine reward rate
-		uint256 rewardRate = 0;
+		// Calculate pending rewards
+		uint256 pendingRewards = calculateRewards(msg.sender, poolId);
+
+		// Mint rewards and transfer staked tokens back to user
+		rewardToken.mint(msg.sender, pendingRewards);
+		pool.stakingToken.transfer(msg.sender, amount);
+
+		// Update lifetime rewards and reset claim time
+		lifetimeRewards[msg.sender] += pendingRewards;
+		lastClaimTime[msg.sender][poolId] = block.timestamp;
+
+		emit Unstaked(msg.sender, poolId, amount, pendingRewards);
+	}
+
+	// Claim rewards without unlocking tokens
+	function claimRewards(uint256 poolId) external {
+		require(poolId < pools.length, "Invalid pool ID");
+		Pool storage pool = pools[poolId];
+
+		// Fetch reward rate
+		uint256 rewardRate = getRewardRate(poolId, pool.lockPeriods[0]);
+		require(rewardRate > 0, "Invalid reward rate");
+
+		// Calculate pending rewards
+		uint256 pendingRewards = lockContract.calculateRewards(
+			msg.sender,
+			poolId,
+			rewardRate,
+			lastClaimTime[msg.sender][poolId]
+		);
+		require(pendingRewards > 0, "No rewards available");
+
+		// Mint rewards
+		rewardToken.mint(msg.sender, pendingRewards);
+
+		// Update lifetime rewards and claim time
+		lifetimeRewards[msg.sender] += pendingRewards;
+		lastClaimTime[msg.sender][poolId] = block.timestamp;
+
+		emit RewardsClaimed(msg.sender, poolId, pendingRewards);
+	}
+
+	// Helper function to fetch the reward rate for a specific pool and lock period
+	function getRewardRate(
+		uint256 poolId,
+		uint256 lockPeriod
+	) internal view returns (uint256) {
+		Pool storage pool = pools[poolId];
 		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
 			if (pool.lockPeriods[i] == lockPeriod) {
-				rewardRate = pool.rewardRates[i];
-				break;
+				return pool.rewardRates[i];
 			}
 		}
-		uint256 reward = (amount * rewardRate) / 10000;
-
-		// Mint reward tokens and transfer staking tokens back to user
-		pool.stakingToken.transfer(msg.sender, amount);
-		rewardToken.mint(msg.sender, reward);
-
-		// Update lifetime rewards
-		lifetimeRewards[msg.sender] += reward;
-
-		emit Unstaked(msg.sender, poolId, amount, reward);
+		return 0;
 	}
 
 	// Get total rewards earned by a user
 	function getLifetimeRewards(address user) external view returns (uint256) {
 		return lifetimeRewards[user];
-	}
-
-	// Get pool details
-	function getPool(
-		uint256 poolId
-	) external view returns (IERC20, uint256[] memory, uint256[] memory, bool) {
-		Pool storage pool = pools[poolId];
-		return (
-			pool.stakingToken,
-			pool.lockPeriods,
-			pool.rewardRates,
-			pool.isActive
-		);
 	}
 }
