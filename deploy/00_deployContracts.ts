@@ -41,31 +41,34 @@
 
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
-import { Contract } from "ethers";
+import { ethers } from "hardhat";
 
 const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployer } = await hre.getNamedAccounts();
+  // const { deployer } = await hre.getNamedAccounts();
+  const deployerPrivateKey =
+    process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+  const deployerWallet = new ethers.Wallet(deployerPrivateKey, hre.ethers.provider);
+
   const { deploy } = hre.deployments;
-  const pawsyToken = '0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a'
-  const lpToken = '0x96fc64cae162c1cb288791280c3eff2255c330a8'
+  const pawsyToken = "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a";
+  const lpToken = "0x96fc64cae162c1cb288791280c3eff2255c330a8";
 
-  const treasuryDeployment = await deploy("Treasury", {
-    from: deployer,
-    args: [lpToken],
+  const lockDeployment = await deploy("Lock", {
+    from: deployerWallet.address,
     log: true,
     autoMine: true,
   });
 
-  console.log("Treasury deployed to:", treasuryDeployment.address);
+  console.log("Lock deployed to:", lockDeployment.address);
 
-  const vaultDeployment = await deploy("Vault", {
-    from: deployer,
-    args: [pawsyToken, lpToken, treasuryDeployment.address],
+  const stakingVaultDeployment = await deploy("StakingVault", {
+    from: deployerWallet.address,
+    args: [pawsyToken, lpToken, lockDeployment.address],
     log: true,
     autoMine: true,
   });
 
-  console.log("Vault deployed to:", vaultDeployment.address);
+  console.log("StakingVault deployed to:", stakingVaultDeployment.address);
 };
 
 export default deployContracts;
