@@ -44,31 +44,68 @@ import { DeployFunction } from "hardhat-deploy/types";
 import { ethers } from "hardhat";
 
 const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  // const { deployer } = await hre.getNamedAccounts();
   const deployerPrivateKey =
     process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
   const deployerWallet = new ethers.Wallet(deployerPrivateKey, hre.ethers.provider);
 
   const { deploy } = hre.deployments;
-  const pawsyToken = "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a";
-  const lpToken = "0x96fc64cae162c1cb288791280c3eff2255c330a8";
 
+  // Define tokens
+  const pawsyToken = "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a"; // ERC20 token
+  const lpToken = "0x96fc64cae162c1cb288791280c3eff2255c330a8"; // LP token
+
+  // Deploy Lock contract
   const lockDeployment = await deploy("Lock", {
     from: deployerWallet.address,
     log: true,
     autoMine: true,
   });
-
   console.log("Lock deployed to:", lockDeployment.address);
 
-  const stakingVaultDeployment = await deploy("StakingVault", {
+  // Deploy RewardToken contract
+  const rewardTokenDeployment = await deploy("RewardToken", {
     from: deployerWallet.address,
-    args: [pawsyToken, lpToken, lockDeployment.address],
     log: true,
     autoMine: true,
   });
+  console.log("RewardToken (DRUGS) deployed to:", rewardTokenDeployment.address);
 
+  // Deploy StakingVault contract
+  const stakingVaultDeployment = await deploy("StakingVault", {
+    from: deployerWallet.address,
+    args: [lockDeployment.address, rewardTokenDeployment.address],
+    log: true,
+    autoMine: true,
+  });
   console.log("StakingVault deployed to:", stakingVaultDeployment.address);
+
+  // Transfer ownership of RewardToken to StakingVault
+  const rewardTokenContract = await ethers.getContractAt("RewardToken", rewardTokenDeployment.address, deployerWallet);
+  const tx = await rewardTokenContract.transferOwnership(stakingVaultDeployment.address);
+  await tx.wait();
+  console.log(`Ownership of RewardToken transferred to StakingVault: ${stakingVaultDeployment.address}`);
+
+  // Initialize Pools
+  const stakingVaultContract = await ethers.getContractAt(
+    "StakingVault",
+    stakingVaultDeployment.address,
+    deployerWallet,
+  );
+
+  // Default timelock periods (in seconds) and reward rates
+  const timelocks = [50 * 24 * 60 * 60, 100 * 24 * 60 * 60, 200 * 24 * 60 * 60, 400 * 24 * 60 * 60]; // 50, 100, 200, 400 days
+  const pawsyRates = [100, 200, 300, 400]; // 1%, 2%, 3%, 4% for $PAWSY
+  const lpRates = [500, 600, 700, 800]; // 5%, 6%, 7%, 8% for LP token
+
+  // Add $PAWSY pool
+  const addPawsyPoolTx = await stakingVaultContract.addPool(pawsyToken, timelocks, pawsyRates);
+  await addPawsyPoolTx.wait();
+  console.log("Pool added for $PAWSY");
+
+  // Add LP pool
+  const addLpPoolTx = await stakingVaultContract.addPool(lpToken, timelocks, lpRates);
+  await addLpPoolTx.wait();
+  console.log("Pool added for $PAWSY/$VIRTUAL LP Token");
 };
 
 export default deployContracts;

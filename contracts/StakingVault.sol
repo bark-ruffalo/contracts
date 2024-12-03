@@ -9,139 +9,148 @@ interface ILock {
 		address user,
 		uint256 amount,
 		uint256 lockPeriod,
-		bool isLP
+		uint256 poolId
 	) external;
 	function unlock(
 		address user,
 		uint256 index
-	) external returns (uint256, uint256, bool, bool);
-	function getLocks(
-		address user
-	)
-		external
-		view
-		returns (
-			uint256[] memory,
-			uint256[] memory,
-			bool[] memory,
-			bool[] memory
-		);
+	) external returns (uint256, uint256, uint256, bool);
+}
+
+interface IRewardToken {
+	function mint(address to, uint256 amount) external;
 }
 
 contract StakingVault is Ownable {
-	IERC20 public pawsyToken;
-	IERC20 public lpToken;
-	ILock public lockContract;
-
-	struct RewardRate {
-		uint256 lockPeriod; // Lock period in seconds
-		uint256 rewardRate; // Reward rate percentage (e.g., 1% -> 100 = 1.00)
+	struct Pool {
+		IERC20 stakingToken; // Token being staked
+		uint256[] lockPeriods; // Supported lock periods
+		uint256[] rewardRates; // Reward rates corresponding to lock periods
+		bool isActive; // Whether the pool is active
 	}
 
-	RewardRate[] public rewardRates; // Reward rates for locking periods
+	Pool[] public pools; // Array of pools
+	ILock public lockContract; // Reference to the lock contract
+	IRewardToken public rewardToken; // Reference to the rewards token
+
+	mapping(address => uint256) public lifetimeRewards; // Tracks total rewards earned by each address
 
 	event Staked(
 		address indexed user,
+		uint256 indexed poolId,
 		uint256 amount,
-		uint256 lockPeriod,
-		bool isLP
+		uint256 lockPeriod
 	);
 	event Unstaked(
 		address indexed user,
+		uint256 indexed poolId,
 		uint256 amount,
-		uint256 reward,
-		bool isLP
+		uint256 reward
 	);
 
 	constructor(
-		address _pawsyToken,
-		address _lpToken,
-		address _lockContract
+		address _lockContract,
+		address _rewardToken
 	) Ownable(msg.sender) {
-		pawsyToken = IERC20(_pawsyToken);
-		lpToken = IERC20(_lpToken);
 		lockContract = ILock(_lockContract);
-
-		// Initialize reward rates for 50/100/200/400 days
-		rewardRates.push(RewardRate({ lockPeriod: 50 days, rewardRate: 100 })); // 1%
-		rewardRates.push(RewardRate({ lockPeriod: 100 days, rewardRate: 200 })); // 2%
-		rewardRates.push(RewardRate({ lockPeriod: 200 days, rewardRate: 300 })); // 3%
-		rewardRates.push(RewardRate({ lockPeriod: 400 days, rewardRate: 400 })); // 4%
+		rewardToken = IRewardToken(_rewardToken);
 	}
 
-	// Add or update reward rates
-	function setRewardRates(RewardRate[] calldata _rates) external onlyOwner {
-		delete rewardRates; // Clear existing rates
-		for (uint256 i = 0; i < _rates.length; i++) {
-			rewardRates.push(_rates[i]);
-		}
+	// Add a new pool
+	function addPool(
+		IERC20 _stakingToken,
+		uint256[] calldata _lockPeriods,
+		uint256[] calldata _rewardRates
+	) external onlyOwner {
+		require(
+			_lockPeriods.length == _rewardRates.length,
+			"Mismatched lock periods and rates"
+		);
+
+		pools.push(
+			Pool({
+				stakingToken: _stakingToken,
+				lockPeriods: _lockPeriods,
+				rewardRates: _rewardRates,
+				isActive: true
+			})
+		);
 	}
 
-	// Stake tokens (ERC20 or LP)
-	function stake(uint256 _amount, uint256 _lockPeriod, bool isLP) external {
-		require(_amount > 0, "Amount must be greater than zero");
+	// Stake tokens
+	function stake(
+		uint256 poolId,
+		uint256 _amount,
+		uint256 _lockPeriod
+	) external {
+		require(poolId < pools.length, "Invalid pool ID");
+		Pool storage pool = pools[poolId];
+		require(pool.isActive, "Pool is not active");
 
 		// Determine reward rate
 		uint256 rewardRate = 0;
-		for (uint256 i = 0; i < rewardRates.length; i++) {
-			if (rewardRates[i].lockPeriod == _lockPeriod) {
-				rewardRate = rewardRates[i].rewardRate;
+		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
+			if (pool.lockPeriods[i] == _lockPeriod) {
+				rewardRate = pool.rewardRates[i];
 				break;
 			}
 		}
 		require(rewardRate > 0, "Invalid lock period");
 
-		// Transfer tokens to contract
-		IERC20 token = isLP ? lpToken : pawsyToken;
-		token.transferFrom(msg.sender, address(this), _amount);
+		// Transfer staking tokens to contract
+		pool.stakingToken.transferFrom(msg.sender, address(this), _amount);
 
 		// Lock tokens
-		lockContract.lock(msg.sender, _amount, _lockPeriod, isLP);
+		lockContract.lock(msg.sender, _amount, _lockPeriod, poolId);
 
-		emit Staked(msg.sender, _amount, _lockPeriod, isLP);
+		emit Staked(msg.sender, poolId, _amount, _lockPeriod);
 	}
 
 	// Unstake tokens
-	function unstake(uint256 index) external {
-		// Call unlock function and destructure the tuple
-		(
-			uint256 amount,
-			uint256 lockPeriod,
-			bool isLP,
-			bool locked
-		) = lockContract.unlock(msg.sender, index);
+	function unstake(uint256 poolId, uint256 index) external {
+		require(poolId < pools.length, "Invalid pool ID");
+		Pool storage pool = pools[poolId];
+
+		// Unlock tokens
+		(uint256 amount, uint256 lockPeriod, , bool locked) = lockContract
+			.unlock(msg.sender, index);
 		require(!locked, "Lock period not yet over");
 
-		// Calculate reward
+		// Determine reward rate
 		uint256 rewardRate = 0;
-		for (uint256 i = 0; i < rewardRates.length; i++) {
-			if (rewardRates[i].lockPeriod == lockPeriod) {
-				rewardRate = rewardRates[i].rewardRate;
+		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
+			if (pool.lockPeriods[i] == lockPeriod) {
+				rewardRate = pool.rewardRates[i];
 				break;
 			}
 		}
 		uint256 reward = (amount * rewardRate) / 10000;
 
-		// Transfer tokens back to user
-		IERC20 token = isLP ? lpToken : pawsyToken;
-		token.transfer(msg.sender, amount + reward);
+		// Mint reward tokens and transfer staking tokens back to user
+		pool.stakingToken.transfer(msg.sender, amount);
+		rewardToken.mint(msg.sender, reward);
 
-		emit Unstaked(msg.sender, amount, reward, isLP);
+		// Update lifetime rewards
+		lifetimeRewards[msg.sender] += reward;
+
+		emit Unstaked(msg.sender, poolId, amount, reward);
 	}
 
-	// Get user locks
-	function getUserLocks(
-		address user
-	)
-		external
-		view
-		returns (
-			uint256[] memory,
-			uint256[] memory,
-			bool[] memory,
-			bool[] memory
-		)
-	{
-		return lockContract.getLocks(user);
+	// Get total rewards earned by a user
+	function getLifetimeRewards(address user) external view returns (uint256) {
+		return lifetimeRewards[user];
+	}
+
+	// Get pool details
+	function getPool(
+		uint256 poolId
+	) external view returns (IERC20, uint256[] memory, uint256[] memory, bool) {
+		Pool storage pool = pools[poolId];
+		return (
+			pool.stakingToken,
+			pool.lockPeriods,
+			pool.rewardRates,
+			pool.isActive
+		);
 	}
 }
