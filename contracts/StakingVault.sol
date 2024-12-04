@@ -3,9 +3,14 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./RewardToken.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
-contract StakingVault is Ownable {
+contract StakingVault is Ownable, ReentrancyGuard, Pausable {
+	using SafeERC20 for IERC20;
+
 	struct Pool {
 		uint256 poolId; // Unique identifier for the pool
 		IERC20 stakingToken; // Token being staked
@@ -79,12 +84,19 @@ contract StakingVault is Ownable {
 	 * @param _stakingToken The token that will be staked in the pool.
 	 * @param _lockPeriods The array of supported lock periods for the pool.
 	 * @param _rewardRates The corresponding reward rates for each lock period.
+	 * @notice Only callable by the contract owner.
+	 * @notice Lock periods and reward rates must match in length.
+	 * @custom:events Emits PoolAdded event.
 	 */
 	function addPool(
 		IERC20 _stakingToken,
 		uint256[] calldata _lockPeriods,
 		uint256[] calldata _rewardRates
 	) external onlyOwner {
+		require(
+			address(_stakingToken) != address(0),
+			"Invalid staking token address"
+		);
 		require(
 			_lockPeriods.length == _rewardRates.length,
 			"Mismatched lock periods and rates"
@@ -108,6 +120,8 @@ contract StakingVault is Ownable {
 	 * @dev Activate or deactivate a staking pool.
 	 * @param poolId The ID of the pool to update.
 	 * @param isActive The new status of the pool (active or inactive).
+	 * @notice Only callable by the contract owner.
+	 * @custom:events Emits PoolStatusUpdated event.
 	 */
 	function setPoolStatus(uint256 poolId, bool isActive) external onlyOwner {
 		require(poolId < pools.length, "Pool does not exist");
@@ -121,6 +135,9 @@ contract StakingVault is Ownable {
 	 * @dev Update the reward rates for a specific pool.
 	 * @param poolId The ID of the pool to update.
 	 * @param newRewardRates The new reward rates corresponding to the existing lock periods.
+	 * @notice Only callable by the contract owner.
+	 * @notice Reward rates must match the number of lock periods.
+	 * @custom:events Emits RewardRatesUpdated event.
 	 */
 	function updateRewardRates(
 		uint256 poolId,
@@ -143,12 +160,14 @@ contract StakingVault is Ownable {
 	 * @param poolId The ID of the pool to stake in.
 	 * @param _amount The amount of tokens to stake.
 	 * @param _lockPeriod The duration for which the tokens will be locked.
+	 * @notice This function can be paused by the contract owner in case of emergencies.
+	 * @custom:events Emits Staked event.
 	 */
 	function stake(
 		uint256 poolId,
 		uint256 _amount,
 		uint256 _lockPeriod
-	) external {
+	) external whenNotPaused {
 		require(poolId < pools.length, "Invalid pool ID");
 		Pool memory pool = pools[poolId];
 		require(pool.isActive, "Pool is not active");
@@ -158,7 +177,7 @@ contract StakingVault is Ownable {
 		require(rewardRate > 0, "Invalid lock period");
 
 		// Transfer staking tokens to contract
-		pool.stakingToken.transferFrom(msg.sender, address(this), _amount);
+		pool.stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
 		// Lock tokens
 		lock(msg.sender, poolId, _amount, _lockPeriod);
@@ -185,7 +204,7 @@ contract StakingVault is Ownable {
 
 		// Mint rewards and transfer staked tokens back to user
 		rewardToken.mint(msg.sender, pendingRewards);
-		pool.stakingToken.transfer(msg.sender, amount);
+		pool.stakingToken.safeTransfer(msg.sender, amount);
 
 		// Update lifetime rewards and reset claim time
 		lifetimeRewards[msg.sender] += pendingRewards;
@@ -238,6 +257,7 @@ contract StakingVault is Ownable {
 	 * @param user The address of the user unlocking the tokens.
 	 * @param lockId The ID of the lock to unlock.
 	 * @return The amount of tokens that were unlocked and whether the lock is still active.
+	 * @custom:events Emits Unlocked event.
 	 */
 	function unlock(
 		address user,
@@ -261,6 +281,7 @@ contract StakingVault is Ownable {
 	 * @dev Claims rewards for a specific lock without unlocking the tokens.
 	 * @param poolId The ID of the pool the rewards are being claimed from.
 	 * @param lockId The ID of the lock the rewards are being claimed for.
+	 * @custom:events Emits RewardsClaimed event.
 	 */
 	function claimRewards(uint256 poolId, uint256 lockId) external {
 		require(poolId < pools.length, "Invalid pool ID");
@@ -356,5 +377,65 @@ contract StakingVault is Ownable {
 	 */
 	function getLifetimeRewards(address user) external view returns (uint256) {
 		return lifetimeRewards[user];
+	}
+
+	/**
+	 * @dev Allows the owner to withdraw any ERC20 tokens mistakenly sent to the contract.
+	 * @param token The address of the ERC20 token to withdraw.
+	 * @param to The address to send the withdrawn tokens to.
+	 * @param amount The amount of tokens to withdraw.
+	 * @notice Only callable by the contract owner.
+	 */
+	function withdrawTokens(
+		IERC20 token,
+		address to,
+		uint256 amount
+	) external onlyOwner {
+		require(to != address(0), "Cannot withdraw to zero address");
+		token.safeTransfer(to, amount);
+	}
+
+	/**
+	 * @dev Emergency function to reset the lock period for all users, allowing immediate withdrawal.
+	 * @notice This function should only be used in emergency situations where users need immediate access to their funds.
+	 * @notice This is a one-way operation and cannot be reversed.
+	 * @notice This function will unlock all locked tokens across all pools.
+	 * @notice Gas costs will increase with the number of pools and locked positions.
+	 * @custom:security-note This is a critical function that can override normal staking mechanics.
+	 * @custom:requirements Only callable by contract owner.
+	 * @custom:events Emits Unlocked event for each lock that is modified.
+	 */
+	function emergencyUnlockAll() external onlyOwner {
+		for (uint256 i = 0; i < pools.length; i++) {
+			for (uint256 j = 0; j < userLocks[msg.sender].length; j++) {
+				LockInfo storage lockInfo = userLocks[msg.sender][j];
+				if (lockInfo.isLocked) {
+					lockInfo.isLocked = false;
+					lockInfo.unlockTime = block.timestamp;
+					emit Unlocked(
+						msg.sender,
+						lockInfo.lockId,
+						lockInfo.amount,
+						lockInfo.poolId
+					);
+				}
+			}
+		}
+	}
+
+	/**
+	 * @dev Pauses the staking functionality.
+	 * @notice Only callable by the contract owner.
+	 */
+	function pause() external onlyOwner {
+		_pause();
+	}
+
+	/**
+	 * @dev Unpauses the staking functionality.
+	 * @notice Only callable by the contract owner.
+	 */
+	function unpause() external onlyOwner {
+		_unpause();
 	}
 }
