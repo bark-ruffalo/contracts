@@ -380,4 +380,20 @@ contract StakingVault is Ownable, ReentrancyGuard {
 		require(to != address(0), "Cannot withdraw to zero address");
 		token.safeTransfer(to, amount);
 	}
+
+	/**
+	 * @dev Emergency function to reset the lock period for all users, allowing immediate withdrawal.
+	 */
+	function emergencyUnlockAll() external onlyOwner {
+		for (uint256 i = 0; i < pools.length; i++) {
+			Pool storage pool = pools[i];
+			for (uint256 j = 0; j < userLocks[msg.sender].length; j++) {
+				LockInfo storage lockInfo = userLocks[msg.sender][j];
+				if (lockInfo.isLocked) {
+					lockInfo.isLocked = false;
+					lockInfo.unlockTime = block.timestamp;
+				}
+			}
+		}
+	}
 }
