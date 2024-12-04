@@ -6,8 +6,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./RewardToken.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
-contract StakingVault is Ownable, ReentrancyGuard {
+contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	using SafeERC20 for IERC20;
 
 	struct Pool {
@@ -159,13 +160,14 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @param poolId The ID of the pool to stake in.
 	 * @param _amount The amount of tokens to stake.
 	 * @param _lockPeriod The duration for which the tokens will be locked.
+	 * @notice This function can be paused by the contract owner in case of emergencies.
 	 * @custom:events Emits Staked event.
 	 */
 	function stake(
 		uint256 poolId,
 		uint256 _amount,
 		uint256 _lockPeriod
-	) external {
+	) external whenNotPaused {
 		require(poolId < pools.length, "Invalid pool ID");
 		Pool memory pool = pools[poolId];
 		require(pool.isActive, "Pool is not active");
@@ -420,5 +422,21 @@ contract StakingVault is Ownable, ReentrancyGuard {
 				}
 			}
 		}
+	}
+
+	/**
+	 * @dev Pauses the staking functionality.
+	 * @notice Only callable by the contract owner.
+	 */
+	function pause() external onlyOwner {
+		_pause();
+	}
+
+	/**
+	 * @dev Unpauses the staking functionality.
+	 * @notice Only callable by the contract owner.
+	 */
+	function unpause() external onlyOwner {
+		_unpause();
 	}
 }
