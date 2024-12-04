@@ -4,9 +4,12 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./RewardToken.sol";
 
 contract StakingVault is Ownable, ReentrancyGuard {
+	using SafeERC20 for IERC20;
+
 	struct Pool {
 		uint256 poolId; // Unique identifier for the pool
 		IERC20 stakingToken; // Token being staked
@@ -163,7 +166,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
 		require(rewardRate > 0, "Invalid lock period");
 
 		// Transfer staking tokens to contract
-		pool.stakingToken.transferFrom(msg.sender, address(this), _amount);
+		pool.stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
 		// Lock tokens
 		lock(msg.sender, poolId, _amount, _lockPeriod);
@@ -190,7 +193,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
 
 		// Mint rewards and transfer staked tokens back to user
 		rewardToken.mint(msg.sender, pendingRewards);
-		pool.stakingToken.transfer(msg.sender, amount);
+		pool.stakingToken.safeTransfer(msg.sender, amount);
 
 		// Update lifetime rewards and reset claim time
 		lifetimeRewards[msg.sender] += pendingRewards;
@@ -361,5 +364,20 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 */
 	function getLifetimeRewards(address user) external view returns (uint256) {
 		return lifetimeRewards[user];
+	}
+
+	/**
+	 * @dev Allows the owner to withdraw any ERC20 tokens mistakenly sent to the contract.
+	 * @param token The address of the ERC20 token to withdraw.
+	 * @param to The address to send the withdrawn tokens to.
+	 * @param amount The amount of tokens to withdraw.
+	 */
+	function withdrawTokens(
+		IERC20 token,
+		address to,
+		uint256 amount
+	) external onlyOwner {
+		require(to != address(0), "Cannot withdraw to zero address");
+		token.safeTransfer(to, amount);
 	}
 }
