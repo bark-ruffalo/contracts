@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./RewardToken.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	using SafeERC20 for IERC20;
@@ -407,7 +407,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 */
 	function emergencyUnlockAll() external onlyOwner {
 		for (uint256 i = 0; i < pools.length; i++) {
-			Pool storage pool = pools[i];
 			for (uint256 j = 0; j < userLocks[msg.sender].length; j++) {
 				LockInfo storage lockInfo = userLocks[msg.sender][j];
 				if (lockInfo.isLocked) {
