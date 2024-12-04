@@ -83,6 +83,9 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @param _stakingToken The token that will be staked in the pool.
 	 * @param _lockPeriods The array of supported lock periods for the pool.
 	 * @param _rewardRates The corresponding reward rates for each lock period.
+	 * @notice Only callable by the contract owner.
+	 * @notice Lock periods and reward rates must match in length.
+	 * @custom:events Emits PoolAdded event.
 	 */
 	function addPool(
 		IERC20 _stakingToken,
@@ -116,6 +119,8 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @dev Activate or deactivate a staking pool.
 	 * @param poolId The ID of the pool to update.
 	 * @param isActive The new status of the pool (active or inactive).
+	 * @notice Only callable by the contract owner.
+	 * @custom:events Emits PoolStatusUpdated event.
 	 */
 	function setPoolStatus(uint256 poolId, bool isActive) external onlyOwner {
 		require(poolId < pools.length, "Pool does not exist");
@@ -129,6 +134,9 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @dev Update the reward rates for a specific pool.
 	 * @param poolId The ID of the pool to update.
 	 * @param newRewardRates The new reward rates corresponding to the existing lock periods.
+	 * @notice Only callable by the contract owner.
+	 * @notice Reward rates must match the number of lock periods.
+	 * @custom:events Emits RewardRatesUpdated event.
 	 */
 	function updateRewardRates(
 		uint256 poolId,
@@ -151,6 +159,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @param poolId The ID of the pool to stake in.
 	 * @param _amount The amount of tokens to stake.
 	 * @param _lockPeriod The duration for which the tokens will be locked.
+	 * @custom:events Emits Staked event.
 	 */
 	function stake(
 		uint256 poolId,
@@ -246,6 +255,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @param user The address of the user unlocking the tokens.
 	 * @param lockId The ID of the lock to unlock.
 	 * @return The amount of tokens that were unlocked and whether the lock is still active.
+	 * @custom:events Emits Unlocked event.
 	 */
 	function unlock(
 		address user,
@@ -269,6 +279,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @dev Claims rewards for a specific lock without unlocking the tokens.
 	 * @param poolId The ID of the pool the rewards are being claimed from.
 	 * @param lockId The ID of the lock the rewards are being claimed for.
+	 * @custom:events Emits RewardsClaimed event.
 	 */
 	function claimRewards(uint256 poolId, uint256 lockId) external {
 		require(poolId < pools.length, "Invalid pool ID");
@@ -371,6 +382,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
 	 * @param token The address of the ERC20 token to withdraw.
 	 * @param to The address to send the withdrawn tokens to.
 	 * @param amount The amount of tokens to withdraw.
+	 * @notice Only callable by the contract owner.
 	 */
 	function withdrawTokens(
 		IERC20 token,
@@ -383,6 +395,13 @@ contract StakingVault is Ownable, ReentrancyGuard {
 
 	/**
 	 * @dev Emergency function to reset the lock period for all users, allowing immediate withdrawal.
+	 * @notice This function should only be used in emergency situations where users need immediate access to their funds.
+	 * @notice This is a one-way operation and cannot be reversed.
+	 * @notice This function will unlock all locked tokens across all pools.
+	 * @notice Gas costs will increase with the number of pools and locked positions.
+	 * @custom:security-note This is a critical function that can override normal staking mechanics.
+	 * @custom:requirements Only callable by contract owner.
+	 * @custom:events Emits Unlocked event for each lock that is modified.
 	 */
 	function emergencyUnlockAll() external onlyOwner {
 		for (uint256 i = 0; i < pools.length; i++) {
@@ -392,6 +411,12 @@ contract StakingVault is Ownable, ReentrancyGuard {
 				if (lockInfo.isLocked) {
 					lockInfo.isLocked = false;
 					lockInfo.unlockTime = block.timestamp;
+					emit Unlocked(
+						msg.sender,
+						lockInfo.lockId,
+						lockInfo.amount,
+						lockInfo.poolId
+					);
 				}
 			}
 		}
