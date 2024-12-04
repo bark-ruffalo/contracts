@@ -62,6 +62,12 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
   });
   console.log("RewardToken (DRUGS) deployed to:", rewardTokenDeployment.address);
 
+  // Verify RewardToken contract
+  await hre.run("verify:verify", {
+    address: rewardTokenDeployment.address,
+    constructorArguments: [], // Add constructor arguments if necessary
+  });
+
   // Deploy StakingVault contract
   const stakingVaultDeployment = await deploy("StakingVault", {
     from: deployerWallet.address,
@@ -70,6 +76,12 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
     autoMine: true,
   });
   console.log("StakingVault deployed to:", stakingVaultDeployment.address);
+
+  // Verify StakingVault contract
+  await hre.run("verify:verify", {
+    address: stakingVaultDeployment.address,
+    constructorArguments: [rewardTokenDeployment.address], // Pass constructor arguments here
+  });
 
   // Transfer ownership of RewardToken to StakingVault
   const rewardTokenContract = await ethers.getContractAt("RewardToken", rewardTokenDeployment.address, deployerWallet);
