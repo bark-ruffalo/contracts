@@ -3,9 +3,10 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./RewardToken.sol";
 
-contract StakingVault is Ownable {
+contract StakingVault is Ownable, ReentrancyGuard {
 	struct Pool {
 		uint256 poolId; // Unique identifier for the pool
 		IERC20 stakingToken; // Token being staked
@@ -85,6 +86,10 @@ contract StakingVault is Ownable {
 		uint256[] calldata _lockPeriods,
 		uint256[] calldata _rewardRates
 	) external onlyOwner {
+		require(
+			address(_stakingToken) != address(0),
+			"Invalid staking token address"
+		);
 		require(
 			_lockPeriods.length == _rewardRates.length,
 			"Mismatched lock periods and rates"

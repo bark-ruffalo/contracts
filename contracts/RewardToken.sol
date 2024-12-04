@@ -11,6 +11,7 @@ contract RewardToken is ERC20, Ownable {
 	constructor() ERC20("DRUGS", "DRUGS") Ownable(msg.sender) {}
 
 	function mint(address to, uint256 amount) external onlyOwner {
+		require(to != address(0), "Cannot mint to zero address");
 		_mint(to, amount);
 		emit TokensMinted(to, amount);
 	}
@@ -21,6 +22,7 @@ contract RewardToken is ERC20, Ownable {
 	}
 
 	function burnFrom(address account, uint256 amount) external {
+		require(account != address(0), "Cannot burn from zero address");
 		uint256 currentAllowance = allowance(account, msg.sender);
 		require(
 			currentAllowance >= amount,
