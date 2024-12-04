@@ -54,14 +54,6 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
   const pawsyToken = "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a"; // ERC20 token
   const lpToken = "0x96fc64cae162c1cb288791280c3eff2255c330a8"; // LP token
 
-  // Deploy Lock contract
-  const lockDeployment = await deploy("Lock", {
-    from: deployerWallet.address,
-    log: true,
-    autoMine: true,
-  });
-  console.log("Lock deployed to:", lockDeployment.address);
-
   // Deploy RewardToken contract
   const rewardTokenDeployment = await deploy("RewardToken", {
     from: deployerWallet.address,
@@ -73,7 +65,7 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
   // Deploy StakingVault contract
   const stakingVaultDeployment = await deploy("StakingVault", {
     from: deployerWallet.address,
-    args: [lockDeployment.address, rewardTokenDeployment.address],
+    args: [rewardTokenDeployment.address],
     log: true,
     autoMine: true,
   });
