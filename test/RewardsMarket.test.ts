@@ -1,12 +1,13 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Contract, ContractFactory } from "ethers";
+import { RewardsMarket, RewardToken, MockERC20 } from "../typechain-types";
+import { ContractFactory } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 describe("RewardsMarket", function () {
-  let rewardsMarket: Contract;
-  let rewardToken: Contract;
-  let mockToken: Contract;
+  let rewardsMarket: RewardsMarket;
+  let rewardToken: RewardToken;
+  let mockToken: MockERC20;
   let owner: HardhatEthersSigner;
   let user: HardhatEthersSigner;
   let recipient: HardhatEthersSigner;
@@ -16,17 +17,17 @@ describe("RewardsMarket", function () {
     [owner, user, recipient, nonOwner] = await ethers.getSigners();
 
     // Deploy RewardToken
-    const RewardToken: ContractFactory = await ethers.getContractFactory("RewardToken");
+    const RewardToken = await ethers.getContractFactory("RewardToken");
     rewardToken = await RewardToken.deploy();
     await rewardToken.waitForDeployment();
 
     // Deploy MockERC20 for testing custom token campaigns
-    const MockERC20: ContractFactory = await ethers.getContractFactory("MockERC20");
+    const MockERC20 = await ethers.getContractFactory("MockERC20");
     mockToken = await MockERC20.deploy("Mock Token", "MTK");
     await mockToken.waitForDeployment();
 
     // Deploy RewardsMarket
-    const RewardsMarket: ContractFactory = await ethers.getContractFactory("RewardsMarket");
+    const RewardsMarket = await ethers.getContractFactory("RewardsMarket");
     rewardsMarket = await RewardsMarket.deploy(await rewardToken.getAddress());
     await rewardsMarket.waitForDeployment();
 
