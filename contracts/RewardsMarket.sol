@@ -182,6 +182,10 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 		if (burnAmount < campaign.minBurnAmount)
 			revert InsufficientBurnAmount();
 
+		// Update state before external calls
+		campaign.rewardsIssued++;
+		userParticipation[msg.sender][campaignId]++;
+
 		// Handle token transfer/burn
 		if (campaign.tokenAddress == address(0)) {
 			// Use rewardToken and burn
@@ -207,9 +211,6 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 			);
 			if (!callSuccess) revert ExternalCallFailed();
 		}
-
-		campaign.rewardsIssued++;
-		userParticipation[msg.sender][campaignId]++;
 
 		emit RewardTriggered(campaignId, msg.sender, burnAmount, callSuccess);
 	}
