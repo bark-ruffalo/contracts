@@ -87,7 +87,7 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 		bytes calldata targetCalldata,
 		address tokenAddress,
 		address recipientAddress
-	) external onlyOwner {
+	) external onlyOwner whenNotPaused {
 		uint256 campaignId = nextCampaignId++;
 
 		campaigns[campaignId] = Campaign({
@@ -217,11 +217,17 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 	/**
 	 * @notice Recovers tokens accidentally sent to the contract
 	 * @param token Token address to recover
+	 * @param amount Amount of tokens to recover. If 0, recovers entire balance.
 	 */
-	function recoverTokens(address token) external onlyOwner {
+	function recoverTokens(address token, uint256 amount) external onlyOwner {
 		uint256 balance = IERC20(token).balanceOf(address(this));
-		IERC20(token).safeTransfer(owner(), balance);
-		emit TokensRecovered(token, balance);
+		require(balance > 0, "No tokens to recover");
+
+		uint256 amountToRecover = amount == 0 ? balance : amount;
+		require(amountToRecover <= balance, "Amount exceeds balance");
+
+		IERC20(token).safeTransfer(owner(), amountToRecover);
+		emit TokensRecovered(token, amountToRecover);
 	}
 
 	/**

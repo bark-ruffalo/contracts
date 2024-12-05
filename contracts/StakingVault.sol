@@ -399,18 +399,18 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	}
 
 	/**
-	 * @dev Allows the owner to withdraw any ERC20 tokens mistakenly sent to the contract.
-	 * @param token The address of the ERC20 token to withdraw.
-	 * @param to The address to send the withdrawn tokens to.
-	 * @param amount The amount of tokens to withdraw.
+	 * @dev Allows the owner to recover any ERC20 tokens mistakenly sent to the contract.
+	 * @param token The address of the ERC20 token to recover.
+	 * @param to The address to send the recovered tokens to.
+	 * @param amount The amount of tokens to recover.
 	 * @notice Only callable by the contract owner.
 	 */
-	function withdrawTokens(
+	function recoverTokens(
 		IERC20 token,
 		address to,
 		uint256 amount
 	) external onlyOwner {
-		require(to != address(0), "Cannot withdraw to zero address");
+		require(to != address(0), "Cannot recover to zero address");
 		token.safeTransfer(to, amount);
 	}
 

@@ -189,4 +189,36 @@ describe("StakingVault", function () {
       expect(await stakingVault.paused()).to.be.false;
     });
   });
+
+  describe("Recover Tokens", function () {
+    let mockToken: MockERC20;
+    let nonOwner: SignerWithAddress;
+
+    beforeEach(async function () {
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      mockToken = await MockERC20.deploy("Mock Token", "MTK", { gasLimit: 30000000 });
+
+      [, , nonOwner] = await ethers.getSigners();
+    });
+
+    it("Should recover tokens correctly", async function () {
+      const amount = ethers.parseEther("100");
+      await mockToken.mint(await stakingVault.getAddress(), amount);
+
+      const initialBalance = await mockToken.balanceOf(owner.address);
+
+      await stakingVault.recoverTokens(await mockToken.getAddress(), owner.address, amount);
+
+      const finalBalance = await mockToken.balanceOf(owner.address);
+      expect(finalBalance - initialBalance).to.equal(amount);
+    });
+
+    it("Should not allow non-owner to recover tokens", async function () {
+      await expect(
+        stakingVault
+          .connect(nonOwner)
+          .recoverTokens(await mockToken.getAddress(), nonOwner.address, ethers.parseEther("100")),
+      ).to.be.revertedWithCustomError(stakingVault, "OwnableUnauthorizedAccount");
+    });
+  });
 });
