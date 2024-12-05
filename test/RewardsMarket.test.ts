@@ -218,4 +218,132 @@ describe("RewardsMarket", function () {
       ).to.be.revertedWithCustomError(rewardsMarket, "MaxRewardsReached");
     });
   });
+
+  describe("Campaign Listing", function () {
+    beforeEach(async function () {
+      // Create multiple campaigns with different states
+      // Campaign 0: Active, no end date
+      await rewardsMarket.createCampaign(
+        ethers.parseEther("100"),
+        0,
+        0,
+        ethers.ZeroAddress,
+        "0x",
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+      );
+
+      // Campaign 1: Active, future end date
+      const futureDate = Math.floor(Date.now() / 1000) + 3600;
+      await rewardsMarket.createCampaign(
+        ethers.parseEther("100"),
+        futureDate,
+        0,
+        ethers.ZeroAddress,
+        "0x",
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+      );
+
+      // Campaign 2: Inactive (deactivated)
+      await rewardsMarket.createCampaign(
+        ethers.parseEther("100"),
+        0,
+        0,
+        ethers.ZeroAddress,
+        "0x",
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+      );
+      await rewardsMarket.deactivateCampaign(2);
+
+      // Campaign 3: Inactive (expired)
+      const pastDate = Math.floor(Date.now() / 1000) - 3600;
+      await rewardsMarket.createCampaign(
+        ethers.parseEther("100"),
+        pastDate,
+        0,
+        ethers.ZeroAddress,
+        "0x",
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+      );
+    });
+
+    it("Should return correct total number of campaigns", async function () {
+      const total = await rewardsMarket.getTotalCampaigns();
+      expect(total).to.equal(4);
+    });
+
+    it("Should return correct campaign IDs within range", async function () {
+      const ids = await rewardsMarket.getCampaignIds(1, 3);
+      expect(ids.length).to.equal(2);
+      expect(ids[0]).to.equal(1);
+      expect(ids[1]).to.equal(2);
+    });
+
+    it("Should revert when requesting invalid range", async function () {
+      await expect(rewardsMarket.getCampaignIds(3, 2)).to.be.revertedWith("Invalid range");
+      await expect(rewardsMarket.getCampaignIds(0, 5)).to.be.revertedWith("End index out of bounds");
+    });
+
+    it("Should return correct active campaigns", async function () {
+      const [ids, details] = await rewardsMarket.getActiveCampaigns(0, 4);
+
+      // Should return 2 active campaigns (campaigns 0 and 1)
+      expect(ids.length).to.equal(2);
+      expect(details.length).to.equal(2);
+
+      // Verify first campaign details
+      expect(ids[0]).to.equal(0);
+      expect(details[0].isActive).to.be.true;
+      expect(details[0].endDate).to.equal(0);
+
+      // Verify second campaign details
+      expect(ids[1]).to.equal(1);
+      expect(details[1].isActive).to.be.true;
+      expect(details[1].endDate).to.be.greaterThan(Math.floor(Date.now() / 1000));
+    });
+
+    it("Should return correct inactive campaigns", async function () {
+      const [ids, details] = await rewardsMarket.getInactiveCampaigns(0, 4);
+
+      // Should return 2 inactive campaigns (campaigns 2 and 3)
+      expect(ids.length).to.equal(2);
+      expect(details.length).to.equal(2);
+
+      // Verify deactivated campaign
+      expect(ids[0]).to.equal(2);
+      expect(details[0].isActive).to.be.false;
+
+      // Verify expired campaign
+      expect(ids[1]).to.equal(3);
+      expect(details[1].isActive).to.be.true;
+      expect(details[1].endDate).to.be.lessThan(Math.floor(Date.now() / 1000));
+    });
+
+    it("Should handle empty ranges correctly", async function () {
+      // Test range where no active campaigns exist
+      const [activeIds, activeDetails] = await rewardsMarket.getActiveCampaigns(2, 4);
+      expect(activeIds.length).to.equal(0);
+      expect(activeDetails.length).to.equal(0);
+
+      // Test range where no inactive campaigns exist
+      const [inactiveIds, inactiveDetails] = await rewardsMarket.getInactiveCampaigns(0, 2);
+      expect(inactiveIds.length).to.equal(0);
+      expect(inactiveDetails.length).to.equal(0);
+    });
+
+    it("Should handle pagination correctly", async function () {
+      // Test getting active campaigns in smaller chunks
+      const [ids1, details1] = await rewardsMarket.getActiveCampaigns(0, 2);
+      const [ids2, details2] = await rewardsMarket.getActiveCampaigns(2, 4);
+
+      // Combined results should match full range query
+      const [fullIds, fullDetails] = await rewardsMarket.getActiveCampaigns(0, 4);
+
+      expect([...ids1, ...ids2].length).to.equal(fullIds.length);
+      expect([...details1, ...details2].length).to.equal(fullDetails.length);
+    });
+  });
 });
