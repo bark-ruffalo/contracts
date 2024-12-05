@@ -48,6 +48,7 @@ const config: HardhatUserConfig = {
         url: forkingURL,
         enabled: process.env.MAINNET_FORKING_ENABLED === "true",
       },
+      blockGasLimit: 30000000,
     },
     mainnet: {
       url: `https://cloudflare-eth.com`,
