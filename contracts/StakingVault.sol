@@ -79,6 +79,11 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		rewardToken = RewardToken(_rewardToken);
 	}
 
+	// Set the reward token address (can be called after deployment if needed)
+	function setRewardToken(address _rewardToken) external onlyOwner {
+		rewardToken = RewardToken(_rewardToken);
+	}
+
 	/**
 	 * @dev Add a new pool for staking.
 	 * @param _stakingToken The token that will be staked in the pool.

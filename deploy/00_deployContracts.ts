@@ -89,6 +89,7 @@ const deployContracts: DeployFunction = async function (hre: HardhatRuntimeEnvir
   await tx.wait();
   console.log(`Ownership of RewardToken transferred to StakingVault: ${stakingVaultDeployment.address}`);
 
+  // Add default pools (optional step, can be done after deployment)
   // Initialize Pools
   const stakingVaultContract = await ethers.getContractAt(
     "StakingVault",
