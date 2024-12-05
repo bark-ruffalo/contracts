@@ -19,7 +19,8 @@
     "security": "slither . --config-file slither.config.json || true",
     "lint:sol": "solhint 'contracts/**/*.sol'",
     "coverage": "hardhat coverage",
-    "coverage:clean": "rimraf coverage coverage.json"
+    "coverage:clean": "rimraf coverage coverage.json",
+    "clean": "ts-node scripts/clean.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
@@ -50,7 +51,7 @@
     "rimraf": "^5.0.5",
     "solhint": "^4.1.1",
     "solidity-coverage": "^0.8.13",
-    "ts-node": "^10.9.1",
+    "ts-node": "^10.9.2",
     "typechain": "^8.1.0",
     "typescript": "^5.1.6"
   },
