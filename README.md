@@ -1,5 +1,13 @@
 # Contracts used in the Bark Ruffalo ecosystem
 
+> **🎁 Free to Use for any crypto project or AI Agent builder!**  
+> We just ask the teams to consider airdropping our DAO address or our $PAWSY holders with a small amount.
+>
+> Holders: https://basescan.org/token/0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a#balances
+>
+> DAO address: 0xc638FB83d2bad5dD73d4C7c7deC0445d46a0716F
+
+
 For now, there are three contracts.
 
 **Staking vault:** here you stake and lock $PAWSY for various periods of time.
@@ -8,14 +16,7 @@ For now, there are three contracts.
 
 **The rewards market:** here, the devs or the DAO can create campaigns to allow users to exchange various tokens, like the reward token, for rewards. The first campaign will allow trading reward tokens for Bark Ruffalo NFTs.
 
-
-> **🎁 Free to Use for any crypto project or AI Agent builder!**  
-> We just ask the teams to consider airdropping our $PAWSY holders with a small amount or the DAO address.
->
-> Holders: https://basescan.org/token/0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a#balances
->
-> DAO address: 0xc638FB83d2bad5dD73d4C7c7deC0445d46a0716F
-
+_If you want to use these, wait a few more days because the documentation will improve. We'll also post the source code of the website, which will help you understand better how to interact with them._
 
 ## Core Contracts
 
