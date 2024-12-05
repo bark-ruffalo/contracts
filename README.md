@@ -1,6 +1,21 @@
-# Rewards Market System
+# Contracts used in the Bark Ruffalo ecosystem
 
-A comprehensive decentralized rewards system featuring campaign management, token staking, and configurable reward distributions. Built with security and flexibility in mind, this system enables complex reward campaigns with customizable mechanics.
+For now, there are three contracts.
+
+**Staking vault:** here you stake and lock $PAWSY for various periods of time.
+
+**The reward token:** only mintable by the staking vault; it is used to track how much a user has contributed to the ecosystem. 
+
+**The rewards market:** here, the devs or the DAO can create campaigns to allow users to exchange various tokens, like the reward token, for rewards. The first campaign will allow trading reward tokens for Bark Ruffalo NFTs.
+
+
+> **🎁 Free to Use for any crypto project or AI Agent builder!**  
+> We just ask the teams to consider airdropping our $PAWSY holders with a small amount or the DAO address.
+>
+> Holders: https://basescan.org/token/0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a#balances
+>
+> DAO address: 0xc638FB83d2bad5dD73d4C7c7deC0445d46a0716F
+
 
 ## Core Contracts
 
@@ -232,4 +247,4 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Please check our contributing guidelines for details.
+Contributions are welcome! Just submit a pull request and we'll review it.
