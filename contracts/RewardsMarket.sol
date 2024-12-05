@@ -38,6 +38,10 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 	// User address => Campaign ID => Number of times participated
 	mapping(address => mapping(uint256 => uint256)) public userParticipation;
 
+	// Add this after the existing mappings
+	uint256[] public allCampaignIds;
+	mapping(uint256 => uint256) public campaignIdToArrayIndex;
+
 	event CampaignCreated(
 		uint256 indexed campaignId,
 		uint256 minBurnAmount,
@@ -98,6 +102,10 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 			tokenAddress: tokenAddress,
 			recipientAddress: recipientAddress
 		});
+
+		// Add to the array of campaign IDs
+		campaignIdToArrayIndex[campaignId] = allCampaignIds.length;
+		allCampaignIds.push(campaignId);
 
 		emit CampaignCreated(
 			campaignId,
@@ -275,5 +283,141 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 		uint256 campaignId
 	) external view returns (uint256) {
 		return userParticipation[user][campaignId];
+	}
+
+	/**
+	 * @notice Returns total number of campaigns ever created
+	 */
+	function getTotalCampaigns() external view returns (uint256) {
+		return allCampaignIds.length;
+	}
+
+	/**
+	 * @notice Returns an array of campaign IDs within the specified range
+	 * @param startIndex Start index in the campaigns array
+	 * @param endIndex End index in the campaigns array (exclusive)
+	 * @return Array of campaign IDs
+	 */
+	function getCampaignIds(
+		uint256 startIndex,
+		uint256 endIndex
+	) external view returns (uint256[] memory) {
+		require(startIndex < endIndex, "Invalid range");
+		require(endIndex <= allCampaignIds.length, "End index out of bounds");
+
+		uint256 length = endIndex - startIndex;
+		uint256[] memory ids = new uint256[](length);
+
+		for (uint256 i = 0; i < length; i++) {
+			ids[i] = allCampaignIds[startIndex + i];
+		}
+
+		return ids;
+	}
+
+	/**
+	 * @notice Returns all active campaigns within the specified range
+	 * @param startIndex Start index in the campaigns array
+	 * @param endIndex End index in the campaigns array (exclusive)
+	 * @return campaignIds Array of campaign IDs that are active
+	 * @return details Array of campaign details corresponding to the IDs
+	 */
+	function getActiveCampaigns(
+		uint256 startIndex,
+		uint256 endIndex
+	)
+		external
+		view
+		returns (uint256[] memory campaignIds, Campaign[] memory details)
+	{
+		require(startIndex < endIndex, "Invalid range");
+		require(endIndex <= allCampaignIds.length, "End index out of bounds");
+
+		uint256 length = endIndex - startIndex;
+
+		// First pass: count active campaigns
+		uint256 activeCount = 0;
+		for (uint256 i = 0; i < length; i++) {
+			uint256 campaignId = allCampaignIds[startIndex + i];
+			if (
+				campaigns[campaignId].isActive &&
+				(campaigns[campaignId].endDate == 0 ||
+					campaigns[campaignId].endDate > block.timestamp)
+			) {
+				activeCount++;
+			}
+		}
+
+		// Second pass: populate arrays
+		campaignIds = new uint256[](activeCount);
+		details = new Campaign[](activeCount);
+		uint256 activeIndex = 0;
+
+		for (uint256 i = 0; i < length; i++) {
+			uint256 campaignId = allCampaignIds[startIndex + i];
+			Campaign storage campaign = campaigns[campaignId];
+
+			if (
+				campaign.isActive &&
+				(campaign.endDate == 0 || campaign.endDate > block.timestamp)
+			) {
+				campaignIds[activeIndex] = campaignId;
+				details[activeIndex] = campaign;
+				activeIndex++;
+			}
+		}
+	}
+
+	/**
+	 * @notice Returns all inactive campaigns within the specified range
+	 * @param startIndex Start index in the campaigns array
+	 * @param endIndex End index in the campaigns array (exclusive)
+	 * @return campaignIds Array of campaign IDs that are inactive
+	 * @return details Array of campaign details corresponding to the IDs
+	 */
+	function getInactiveCampaigns(
+		uint256 startIndex,
+		uint256 endIndex
+	)
+		external
+		view
+		returns (uint256[] memory campaignIds, Campaign[] memory details)
+	{
+		require(startIndex < endIndex, "Invalid range");
+		require(endIndex <= allCampaignIds.length, "End index out of bounds");
+
+		uint256 length = endIndex - startIndex;
+
+		// First pass: count inactive campaigns
+		uint256 inactiveCount = 0;
+		for (uint256 i = 0; i < length; i++) {
+			uint256 campaignId = allCampaignIds[startIndex + i];
+			if (
+				!campaigns[campaignId].isActive ||
+				(campaigns[campaignId].endDate != 0 &&
+					campaigns[campaignId].endDate <= block.timestamp)
+			) {
+				inactiveCount++;
+			}
+		}
+
+		// Second pass: populate arrays
+		campaignIds = new uint256[](inactiveCount);
+		details = new Campaign[](inactiveCount);
+		uint256 inactiveIndex = 0;
+
+		for (uint256 i = 0; i < length; i++) {
+			uint256 campaignId = allCampaignIds[startIndex + i];
+			Campaign storage campaign = campaigns[campaignId];
+
+			if (
+				!campaign.isActive ||
+				(campaign.endDate != 0 && campaign.endDate <= block.timestamp)
+			) {
+				campaignIds[inactiveIndex] = campaignId;
+				details[inactiveIndex] = campaign;
+				inactiveIndex++;
+			}
+		}
 	}
 }
