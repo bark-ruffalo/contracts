@@ -4,6 +4,9 @@ import { StakingVault, RewardToken, MockERC20 } from "../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 
+const HIGH_GAS_LIMIT = 500000;
+const MED_GAS_LIMIT = 200000;
+
 describe("StakingVault", function () {
   let stakingVault: StakingVault;
   let rewardToken: RewardToken;
@@ -93,7 +96,7 @@ describe("StakingVault", function () {
     it("Should stake tokens correctly", async function () {
       const stakeAmount = ethers.parseEther("100");
 
-      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: 30000000 }))
+      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: HIGH_GAS_LIMIT }))
         .to.emit(stakingVault, "Staked")
         .withArgs(user1.address, 0, stakeAmount, WEEK);
 
@@ -106,9 +109,9 @@ describe("StakingVault", function () {
       await stakingVault.setPoolStatus(0, false, { gasLimit: 30000000 });
       const stakeAmount = ethers.parseEther("100");
 
-      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: 30000000 })).to.be.revertedWith(
-        "Pool is not active",
-      );
+      await expect(
+        stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: HIGH_GAS_LIMIT }),
+      ).to.be.revertedWith("Pool is not active");
     });
   });
 
@@ -118,7 +121,7 @@ describe("StakingVault", function () {
       const rewardRates = [100];
       await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
 
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: 30000000 });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: HIGH_GAS_LIMIT });
     });
 
     it("Should calculate rewards correctly", async function () {
@@ -131,7 +134,7 @@ describe("StakingVault", function () {
     it("Should claim rewards correctly", async function () {
       await time.increase(WEEK / 2);
 
-      await expect(stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: 30000000 })).to.emit(
+      await expect(stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: HIGH_GAS_LIMIT })).to.emit(
         stakingVault,
         "RewardsClaimed",
       );
@@ -147,11 +150,11 @@ describe("StakingVault", function () {
       const rewardRates = [100];
       await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
 
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: 30000000 });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: HIGH_GAS_LIMIT });
     });
 
     it("Should not allow unstaking before lock period", async function () {
-      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: 30000000 })).to.be.revertedWith(
+      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: HIGH_GAS_LIMIT })).to.be.revertedWith(
         "Lock period not over",
       );
     });
@@ -159,7 +162,10 @@ describe("StakingVault", function () {
     it("Should allow unstaking after lock period", async function () {
       await time.increase(WEEK);
 
-      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: 30000000 })).to.emit(stakingVault, "Unstaked");
+      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: HIGH_GAS_LIMIT })).to.emit(
+        stakingVault,
+        "Unstaked",
+      );
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       expect(userLocks[0].isLocked).to.be.false;
@@ -172,9 +178,9 @@ describe("StakingVault", function () {
       const rewardRates = [100];
       await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
 
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH, { gasLimit: 30000000 });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH, { gasLimit: HIGH_GAS_LIMIT });
 
-      await stakingVault.emergencyUnlockAll({ gasLimit: 30000000 });
+      await stakingVault.emergencyUnlockAll({ gasLimit: HIGH_GAS_LIMIT });
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       console.log({ userLocks });
@@ -182,10 +188,10 @@ describe("StakingVault", function () {
     });
 
     it("Should allow owner to pause and unpause", async function () {
-      await stakingVault.pause({ gasLimit: 30000000 });
+      await stakingVault.pause({ gasLimit: HIGH_GAS_LIMIT });
       expect(await stakingVault.paused()).to.be.true;
 
-      await stakingVault.unpause({ gasLimit: 30000000 });
+      await stakingVault.unpause({ gasLimit: HIGH_GAS_LIMIT });
       expect(await stakingVault.paused()).to.be.false;
     });
   });
@@ -203,11 +209,13 @@ describe("StakingVault", function () {
 
     it("Should recover tokens correctly", async function () {
       const amount = ethers.parseEther("100");
-      await mockToken.mint(await stakingVault.getAddress(), amount);
+      await mockToken.mint(await stakingVault.getAddress(), amount, { gasLimit: MED_GAS_LIMIT });
 
       const initialBalance = await mockToken.balanceOf(owner.address);
 
-      await stakingVault.recoverTokens(await mockToken.getAddress(), owner.address, amount);
+      await stakingVault.recoverTokens(await mockToken.getAddress(), owner.address, amount, {
+        gasLimit: MED_GAS_LIMIT,
+      });
 
       const finalBalance = await mockToken.balanceOf(owner.address);
       expect(finalBalance - initialBalance).to.equal(amount);
@@ -217,7 +225,9 @@ describe("StakingVault", function () {
       await expect(
         stakingVault
           .connect(nonOwner)
-          .recoverTokens(await mockToken.getAddress(), nonOwner.address, ethers.parseEther("100")),
+          .recoverTokens(await mockToken.getAddress(), nonOwner.address, ethers.parseEther("100"), {
+            gasLimit: MED_GAS_LIMIT,
+          }),
       ).to.be.revertedWithCustomError(stakingVault, "OwnableUnauthorizedAccount");
     });
   });
