@@ -47,6 +47,7 @@
     "hardhat-deploy-ethers": "^0.4.2",
     "hardhat-gas-reporter": "^2.2.1",
     "prettier": "^3.2.5",
+    "rimraf": "^5.0.5",
     "solhint": "^4.1.1",
     "solidity-coverage": "^0.8.13",
     "ts-node": "^10.9.1",
