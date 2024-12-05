@@ -34,6 +34,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 
 	mapping(address => LockInfo[]) public userLocks; // Tracks locks for each user
 	mapping(address => uint256) public lifetimeRewards; // Tracks total rewards earned by each address
+	address[] public lockedUsers;
 
 	event Staked(
 		address indexed user,
@@ -242,6 +243,9 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256 unlockTime = block.timestamp + lockPeriod;
 		uint256 lockId = userLocks[user].length;
 
+		if (userLocks[user].length == 0) {
+			lockedUsers.push(user);
+		}
 		userLocks[user].push(
 			LockInfo({
 				lockId: lockId,
@@ -276,6 +280,16 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		require(lockInfo.isLocked, "Lock already unlocked");
 
 		lockInfo.isLocked = false;
+		if (userLocks[user].length == 0) {
+			for (uint i = 0; i < lockedUsers.length; i++) {
+				if (lockedUsers[i] == user) {
+					// Swap with the last element
+					lockedUsers[i] = lockedUsers[lockedUsers.length - 1];
+					// Remove the last element
+					lockedUsers.pop();
+				}
+			}
+		}
 
 		emit Unlocked(user, lockId, lockInfo.amount, lockInfo.poolId);
 
@@ -411,14 +425,14 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @custom:events Emits Unlocked event for each lock that is modified.
 	 */
 	function emergencyUnlockAll() external onlyOwner {
-		for (uint256 i = 0; i < pools.length; i++) {
-			for (uint256 j = 0; j < userLocks[msg.sender].length; j++) {
-				LockInfo storage lockInfo = userLocks[msg.sender][j];
+		for (uint256 i = 0; i < lockedUsers.length; i++) {
+			for (uint256 j = 0; j < userLocks[lockedUsers[i]].length; j++) {
+				LockInfo storage lockInfo = userLocks[lockedUsers[i]][j];
 				if (lockInfo.isLocked) {
 					lockInfo.isLocked = false;
 					lockInfo.unlockTime = block.timestamp;
 					emit Unlocked(
-						msg.sender,
+						lockedUsers[i],
 						lockInfo.lockId,
 						lockInfo.amount,
 						lockInfo.poolId

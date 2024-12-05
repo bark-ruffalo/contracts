@@ -166,6 +166,7 @@ describe("StakingVault", function () {
       await stakingVault.emergencyUnlockAll();
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
+      console.log({ userLocks });
       expect(userLocks[0].isLocked).to.be.false;
     });
 
