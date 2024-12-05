@@ -13,7 +13,8 @@ describe("RewardToken", function () {
     [owner, user1, user2] = await ethers.getSigners();
     const RewardToken = await ethers.getContractFactory("RewardToken");
     // Set a gas limit explicitly
-    rewardToken = await RewardToken.deploy();
+    const gasLimit = 30000000; // Adjust this as necessary
+    rewardToken = await RewardToken.deploy({ gasLimit });
   });
 
   describe("Deployment", function () {
@@ -30,7 +31,7 @@ describe("RewardToken", function () {
   describe("Minting", function () {
     it("Should allow owner to mint tokens", async function () {
       const mintAmount = ethers.parseEther("100");
-      await expect(rewardToken.mint(user1.address, mintAmount))
+      await expect(rewardToken.mint(user1.address, mintAmount, { gasLimit: 30000000 }))
         .to.emit(rewardToken, "TokensMinted")
         .withArgs(user1.address, mintAmount);
 
@@ -39,15 +40,16 @@ describe("RewardToken", function () {
 
     it("Should revert if non-owner tries to mint", async function () {
       const mintAmount = ethers.parseEther("100");
-      await expect(rewardToken.connect(user1).mint(user2.address, mintAmount)).to.be.revertedWithCustomError(
-        rewardToken,
-        "OwnableUnauthorizedAccount",
-      );
+      await expect(
+        rewardToken.connect(user1).mint(user2.address, mintAmount, { gasLimit: 30000000 }),
+      ).to.be.revertedWithCustomError(rewardToken, "OwnableUnauthorizedAccount");
     });
 
     it("Should revert when minting to zero address", async function () {
       const mintAmount = ethers.parseEther("100");
-      await expect(rewardToken.mint(ethers.ZeroAddress, mintAmount)).to.be.revertedWith("Cannot mint to zero address");
+      await expect(rewardToken.mint(ethers.ZeroAddress, mintAmount, { gasLimit: 30000000 })).to.be.revertedWith(
+        "Cannot mint to zero address",
+      );
     });
   });
 
@@ -55,12 +57,12 @@ describe("RewardToken", function () {
     const initialAmount = ethers.parseEther("1000");
 
     beforeEach(async function () {
-      await rewardToken.mint(user1.address, initialAmount);
+      await rewardToken.mint(user1.address, initialAmount, { gasLimit: 30000000 });
     });
 
     it("Should allow users to burn their own tokens", async function () {
       const burnAmount = ethers.parseEther("100");
-      await expect(rewardToken.connect(user1).burn(burnAmount))
+      await expect(rewardToken.connect(user1).burn(burnAmount, { gasLimit: 30000000 }))
         .to.emit(rewardToken, "TokensBurned")
         .withArgs(user1.address, burnAmount);
 
@@ -69,9 +71,9 @@ describe("RewardToken", function () {
 
     it("Should allow approved users to burn tokens via burnFrom", async function () {
       const burnAmount = ethers.parseEther("100");
-      await rewardToken.connect(user1).approve(user2.address, burnAmount);
+      await rewardToken.connect(user1).approve(user2.address, burnAmount, { gasLimit: 30000000 });
 
-      await expect(rewardToken.connect(user2).burnFrom(user1.address, burnAmount))
+      await expect(rewardToken.connect(user2).burnFrom(user1.address, burnAmount, { gasLimit: 30000000 }))
         .to.emit(rewardToken, "TokensBurned")
         .withArgs(user1.address, burnAmount);
 
@@ -80,14 +82,14 @@ describe("RewardToken", function () {
 
     it("Should revert burnFrom if allowance is insufficient", async function () {
       const burnAmount = ethers.parseEther("100");
-      await expect(rewardToken.connect(user2).burnFrom(user1.address, burnAmount)).to.be.revertedWith(
-        "ERC20: burn amount exceeds allowance",
-      );
+      await expect(
+        rewardToken.connect(user2).burnFrom(user1.address, burnAmount, { gasLimit: 30000000 }),
+      ).to.be.revertedWith("ERC20: burn amount exceeds allowance");
     });
 
     it("Should revert burnFrom for zero address", async function () {
       const burnAmount = ethers.parseEther("100");
-      await expect(rewardToken.burnFrom(ethers.ZeroAddress, burnAmount)).to.be.revertedWith(
+      await expect(rewardToken.burnFrom(ethers.ZeroAddress, burnAmount, { gasLimit: 30000000 })).to.be.revertedWith(
         "Cannot burn from zero address",
       );
     });
