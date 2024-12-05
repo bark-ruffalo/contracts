@@ -20,27 +20,27 @@ describe("StakingVault", function () {
 
     // Deploy RewardToken
     const RewardToken = await ethers.getContractFactory("RewardToken");
-    rewardToken = await RewardToken.deploy({ gasLimit: 30000000 });
+    rewardToken = await RewardToken.deploy();
 
     // Deploy Mock ERC20 for staking
     const MockERC20 = await ethers.getContractFactory("MockERC20");
-    stakingToken = await MockERC20.deploy("Mock Token", "MTK", { gasLimit: 30000000 });
+    stakingToken = await MockERC20.deploy("Mock Token", "MTK");
 
     // Deploy StakingVault
     const StakingVault = await ethers.getContractFactory("StakingVault");
-    stakingVault = await StakingVault.deploy(await rewardToken.getAddress(), { gasLimit: 30000000 });
+    stakingVault = await StakingVault.deploy(await rewardToken.getAddress());
 
     // Grant minter role to StakingVault
-    await rewardToken.transferOwnership(await stakingVault.getAddress(), { gasLimit: 30000000 });
+    await rewardToken.transferOwnership(await stakingVault.getAddress());
 
     // Mint staking tokens to users
     const initialBalance = ethers.parseEther("1000");
-    await stakingToken.mint(user1.address, initialBalance, { gasLimit: 30000000 });
-    await stakingToken.mint(user2.address, initialBalance, { gasLimit: 30000000 });
+    await stakingToken.mint(user1.address, initialBalance);
+    await stakingToken.mint(user2.address, initialBalance);
 
     // Approve staking vault to spend tokens
-    await stakingToken.connect(user1).approve(await stakingVault.getAddress(), initialBalance, { gasLimit: 30000000 });
-    await stakingToken.connect(user2).approve(await stakingVault.getAddress(), initialBalance, { gasLimit: 30000000 });
+    await stakingToken.connect(user1).approve(await stakingVault.getAddress(), initialBalance);
+    await stakingToken.connect(user2).approve(await stakingVault.getAddress(), initialBalance);
   });
 
   describe("Pool Management", function () {
@@ -48,9 +48,7 @@ describe("StakingVault", function () {
       const lockPeriods = [WEEK, MONTH];
       const rewardRates = [100, 200];
 
-      await expect(
-        stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 }),
-      )
+      await expect(stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates))
         .to.emit(stakingVault, "PoolAdded")
         .withArgs(0, await stakingToken.getAddress());
 
@@ -63,20 +61,18 @@ describe("StakingVault", function () {
       const lockPeriods = [WEEK];
       const rewardRates = [100, 200];
 
-      await expect(
-        stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 }),
-      ).to.be.revertedWith("Mismatched lock periods and rates");
+      await expect(stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates)).to.be.revertedWith(
+        "Mismatched lock periods and rates",
+      );
     });
 
     it("Should update pool status", async function () {
       const lockPeriods = [WEEK];
       const rewardRates = [100];
 
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates);
 
-      await expect(stakingVault.setPoolStatus(0, false, { gasLimit: 30000000 }))
-        .to.emit(stakingVault, "PoolStatusUpdated")
-        .withArgs(0, false);
+      await expect(stakingVault.setPoolStatus(0, false)).to.emit(stakingVault, "PoolStatusUpdated").withArgs(0, false);
 
       const pool = await stakingVault.pools(0);
       expect(pool.isActive).to.be.false;
@@ -87,13 +83,13 @@ describe("StakingVault", function () {
     beforeEach(async function () {
       const lockPeriods = [WEEK, MONTH];
       const rewardRates = [100, 200];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates);
     });
 
     it("Should stake tokens correctly", async function () {
       const stakeAmount = ethers.parseEther("100");
 
-      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: 30000000 }))
+      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK))
         .to.emit(stakingVault, "Staked")
         .withArgs(user1.address, 0, stakeAmount, WEEK);
 
@@ -103,12 +99,10 @@ describe("StakingVault", function () {
     });
 
     it("Should revert staking when pool is inactive", async function () {
-      await stakingVault.setPoolStatus(0, false, { gasLimit: 30000000 });
+      await stakingVault.setPoolStatus(0, false);
       const stakeAmount = ethers.parseEther("100");
 
-      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: 30000000 })).to.be.revertedWith(
-        "Pool is not active",
-      );
+      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK)).to.be.revertedWith("Pool is not active");
     });
   });
 
@@ -116,9 +110,9 @@ describe("StakingVault", function () {
     beforeEach(async function () {
       const lockPeriods = [WEEK];
       const rewardRates = [100];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates);
 
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: 30000000 });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
     });
 
     it("Should calculate rewards correctly", async function () {
@@ -131,10 +125,7 @@ describe("StakingVault", function () {
     it("Should claim rewards correctly", async function () {
       await time.increase(WEEK / 2);
 
-      await expect(stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: 30000000 })).to.emit(
-        stakingVault,
-        "RewardsClaimed",
-      );
+      await expect(stakingVault.connect(user1).claimRewards(0, 0)).to.emit(stakingVault, "RewardsClaimed");
 
       const lifetimeRewards = await stakingVault.getLifetimeRewards(user1.address);
       expect(lifetimeRewards).to.be.gt(0);
@@ -145,21 +136,19 @@ describe("StakingVault", function () {
     beforeEach(async function () {
       const lockPeriods = [WEEK];
       const rewardRates = [100];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates);
 
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: 30000000 });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
     });
 
     it("Should not allow unstaking before lock period", async function () {
-      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: 30000000 })).to.be.revertedWith(
-        "Lock period not over",
-      );
+      await expect(stakingVault.connect(user1).unstake(0, 0)).to.be.revertedWith("Lock period not over");
     });
 
     it("Should allow unstaking after lock period", async function () {
       await time.increase(WEEK);
 
-      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: 30000000 })).to.emit(stakingVault, "Unstaked");
+      await expect(stakingVault.connect(user1).unstake(0, 0)).to.emit(stakingVault, "Unstaked");
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       expect(userLocks[0].isLocked).to.be.false;
@@ -170,11 +159,11 @@ describe("StakingVault", function () {
     it("Should allow emergency unlock by owner", async function () {
       const lockPeriods = [MONTH];
       const rewardRates = [100];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: 30000000 });
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates);
 
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH, { gasLimit: 30000000 });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
 
-      await stakingVault.emergencyUnlockAll({ gasLimit: 30000000 });
+      await stakingVault.emergencyUnlockAll();
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       console.log({ userLocks });
@@ -182,10 +171,10 @@ describe("StakingVault", function () {
     });
 
     it("Should allow owner to pause and unpause", async function () {
-      await stakingVault.pause({ gasLimit: 30000000 });
+      await stakingVault.pause();
       expect(await stakingVault.paused()).to.be.true;
 
-      await stakingVault.unpause({ gasLimit: 30000000 });
+      await stakingVault.unpause();
       expect(await stakingVault.paused()).to.be.false;
     });
   });
