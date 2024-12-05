@@ -1,7 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { RewardsMarket, RewardToken, MockERC20 } from "../typechain-types";
-import { ContractFactory } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 const HIGH_GAS_LIMIT = 500000;
@@ -317,12 +316,12 @@ describe("RewardsMarket", function () {
 
       // Verify first campaign details
       expect(ids[0]).to.equal(0);
-      expect(details[0].isActive).to.be.true;
+      expect(details[0].isActive).to.equal(true);
       expect(details[0].endDate).to.equal(0);
 
       // Verify second campaign details
       expect(ids[1]).to.equal(1);
-      expect(details[1].isActive).to.be.true;
+      expect(details[1].isActive).to.equal(true);
       expect(details[1].endDate).to.be.greaterThan(Math.floor(Date.now() / 1000));
     });
 
@@ -335,11 +334,11 @@ describe("RewardsMarket", function () {
 
       // Verify deactivated campaign
       expect(ids[0]).to.equal(2);
-      expect(details[0].isActive).to.be.false;
+      expect(details[0].isActive).to.equal(false);
 
       // Verify expired campaign
       expect(ids[1]).to.equal(3);
-      expect(details[1].isActive).to.be.true;
+      expect(details[1].isActive).to.equal(true);
       expect(details[1].endDate).to.be.lessThan(Math.floor(Date.now() / 1000));
     });
 

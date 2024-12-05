@@ -281,7 +281,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 
 		lockInfo.isLocked = false;
 		if (userLocks[user].length == 0) {
-			for (uint i = 0; i < lockedUsers.length; i++) {
+			for (uint256 i = 0; i < lockedUsers.length; i++) {
 				if (lockedUsers[i] == user) {
 					// Swap with the last element
 					lockedUsers[i] = lockedUsers[lockedUsers.length - 1];
