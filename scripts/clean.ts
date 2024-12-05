@@ -1,6 +1,6 @@
-import { rmSync } from 'fs';
+import { rmSync } from "fs";
 
-const paths: string[] = ['node_modules', 'yarn.lock', 'cache', 'artifacts'];
+const paths: string[] = ["node_modules", "yarn.lock", "cache", "artifacts"];
 
 paths.forEach((path: string): void => {
   try {
@@ -14,4 +14,4 @@ paths.forEach((path: string): void => {
       console.log(`Failed to remove ${path}: Unknown error`);
     }
   }
-}); 
+});
