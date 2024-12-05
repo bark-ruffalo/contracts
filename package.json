@@ -18,7 +18,8 @@
     "hardhat-verify": "hardhat verify",
     "security": "slither . --config-file slither.config.json || true",
     "lint:sol": "solhint 'contracts/**/*.sol'",
-    "coverage": "hardhat coverage"
+    "coverage": "hardhat coverage",
+    "coverage:clean": "rimraf coverage coverage.json"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
