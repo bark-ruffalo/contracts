@@ -7,16 +7,13 @@
 >
 > DAO address: 0xc638FB83d2bad5dD73d4C7c7deC0445d46a0716F
 
+## Overview
 
-For now, there are three contracts.
+The ecosystem consists of three main contracts:
 
-**Staking vault:** here you stake and lock $PAWSY for various periods of time.
-
-**The reward token:** only mintable by the staking vault; it is used to track how much a user has contributed to the ecosystem. 
-
-**The rewards market:** here, the devs or the DAO can create campaigns to allow users to exchange various tokens, like the reward token, for rewards. The first campaign will allow trading reward tokens for Bark Ruffalo NFTs.
-
-_If you want to use these, wait a few more days because the documentation will improve. We'll also post the source code of the website, which will help you understand better how to interact with them._
+1. **Staking vault:** Stake and lock $PAWSY for various periods of time.
+2. **Reward token:** Only mintable by the staking vault; tracks user ecosystem contributions.
+3. **Rewards market:** Enables devs/DAO to create campaigns for token exchanges (e.g., reward tokens for NFTs).
 
 ## Core Contracts
 
@@ -129,12 +126,60 @@ yarn coverage
 ```
 
 ### Deployment
+
+The deployment is split into two main parts that can be deployed independently:
+
+#### 1. Staking System
+Deploys the RewardToken and StakingVault contracts on Base Sepolia:
 ```bash
+yarn deploy --tags Staking --network baseSepolia
+```
+
+#### 2. Rewards Market
+Deploys the RewardsMarket contract (requires Staking system to be deployed first) on Base Sepolia:
+```bash
+yarn deploy --tags RewardsMarket --network baseSepolia
+```
+
+#### Other Deployment Options
+```bash
+# Deploy everything at once
+yarn deploy
+
 # Deploy to Base Sepolia testnet
 yarn deploy:base-sepolia
 
-# Verify contract on Base Sepolia
+# Verify contracts on Base Sepolia
 yarn verify:base-sepolia
+```
+
+### Manual Contract Verification
+If you need to verify contracts individually:
+```bash
+# Verify RewardToken
+npx hardhat verify --network baseSepolia DEPLOYED_REWARD_TOKEN_ADDRESS
+
+# Verify StakingVault (requires RewardToken address as constructor arg)
+npx hardhat verify --network baseSepolia DEPLOYED_STAKING_VAULT_ADDRESS REWARD_TOKEN_ADDRESS
+
+# Verify RewardsMarket (requires RewardToken address as constructor arg)
+npx hardhat verify --network baseSepolia DEPLOYED_REWARDS_MARKET_ADDRESS REWARD_TOKEN_ADDRESS
+```
+
+For example:
+```bash
+# Example with real addresses
+npx hardhat verify --network baseSepolia 0x1234...5678
+npx hardhat verify --network baseSepolia 0x8765...4321 0x1234...5678
+```
+
+### Environment Variables
+
+Required environment variables for deployment:
+```bash
+DEPLOYER_PRIVATE_KEY=your_private_key
+PAWSY_TOKEN=pawsy_token_address  # Optional, defaults to mainnet address
+LP_TOKEN=lp_token_address        # Optional, defaults to mainnet address
 ```
 
 ### Code Quality
@@ -176,6 +221,28 @@ yarn clean
 - Prettier for formatting
 - TypeChain for type safety
 
+## Deployment Architecture
+
+The deployment process follows a specific order to ensure proper contract initialization:
+
+1. **Staking System (`00_deployStaking.ts`)**
+   - Deploys RewardToken
+   - Deploys StakingVault
+   - Transfers RewardToken ownership to StakingVault
+   - Initializes staking pools with configurable parameters
+
+2. **Rewards Market (`01_deployRewardsMarket.ts`)**
+   - Requires RewardToken to be deployed
+   - Deploys RewardsMarket with RewardToken integration
+   - Independent operation after deployment
+
+Each deployment script:
+- Checks for existing deployments
+- Handles contract verification
+- Includes proper error handling
+- Supports different network configurations
+- Waits for appropriate confirmation counts
+
 ## Security Considerations
 
 ### Smart Contract Security
@@ -203,4 +270,4 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Just submit a pull request and we'll review it.
+Contributions are welcome! Please submit a pull request for review.
