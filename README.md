@@ -115,9 +115,6 @@ A flexible staking system that manages token deposits and rewards distribution.
 # Install dependencies
 yarn install
 
-# Generate TypeChain types
-yarn typechain
-
 # Compile contracts
 yarn compile
 ```
@@ -127,47 +124,23 @@ yarn compile
 # Run all tests
 yarn test
 
-# Run tests with gas reporting
-yarn test:gas
-
 # Run tests with coverage
 yarn coverage
-
-# Run specific test file
-yarn test test/RewardsMarket.test.ts
-
-# Run tests in watch mode
-yarn test:watch
 ```
 
 ### Deployment
 ```bash
-# Deploy to local network
-yarn deploy:local
-
 # Deploy to Base Sepolia testnet
 yarn deploy:base-sepolia
 
-# Verify contract source code
+# Verify contract on Base Sepolia
 yarn verify:base-sepolia
-
-# Deploy with specific parameters
-yarn deploy:local --network localhost --tags RewardsMarket
 ```
 
 ### Code Quality
 ```bash
-# Run all linters
+# Run linters
 yarn lint
-
-# Solidity linting
-yarn lint:sol
-
-# TypeScript linting
-yarn lint:ts
-
-# Fix auto-fixable issues
-yarn lint:fix
 
 # Format code
 yarn format
@@ -176,28 +149,10 @@ yarn format
 ### Local Development
 ```bash
 # Start local hardhat network
-yarn network
+yarn hardhat node
 
-# Start with mainnet fork
-yarn network:fork
-
-# Clear cache and artifacts
+# Clean artifacts and cache
 yarn clean
-
-# Full cleanup including node_modules
-yarn clean:full
-```
-
-### Utility Scripts
-```bash
-# List account information
-yarn accounts
-
-# Generate documentation
-yarn docgen
-
-# Flatten contracts
-yarn flatten
 ```
 
 ## Development Environment
