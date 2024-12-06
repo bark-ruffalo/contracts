@@ -20,7 +20,8 @@
     "lint:sol": "solhint contracts/**/*.sol",
     "coverage": "hardhat coverage",
     "coverage:clean": "rimraf coverage coverage.json",
-    "clean": "ts-node scripts/clean.ts"
+    "clean": "ts-node scripts/clean.ts",
+    "deploy:base-sepolia": "hardhat deploy --network baseSepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
