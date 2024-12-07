@@ -228,16 +228,56 @@ yarn hardhat node
 yarn clean
 ```
 
-## Development Environment
+### Static Analysis
 
-### Core Tools
+Static analysis tools help identify potential vulnerabilities and code quality issues before deployment. We use Slither as our primary static analyzer.
+
+#### Installing Slither
+
+```bash
+# Install Slither
+pip3 install slither-analyzer
+
+# Verify installation
+slither --version
+```
+
+#### Running Analysis
+
+```bash
+# Run basic Slither analysis
+slither .
+
+# Run with specific configuration
+slither . --config-file slither.config.json
+
+# Generate detailed JSON report
+slither . --json slither-report.json
+
+# Check specific contract
+slither contracts/RewardsMarket.sol
+```
+
+Common Slither detectors include:
+
+- Reentrancy vulnerabilities
+- Access control issues
+- Arithmetic operations that could overflow
+- Uninitialized state variables
+- Gas optimization opportunities
+- Unused state variables
+- Incorrect function visibility
+
+### Development Environment
+
+#### Core Tools
 
 - Hardhat v2.19.x
 - TypeScript v5.x
 - Ethers.js v6.x
 - OpenZeppelin Contracts v5.x
 
-### Testing Framework
+#### Testing Framework
 
 - Chai for assertions
 - Hardhat-deploy for deployment testing
@@ -245,14 +285,14 @@ yarn clean
 - Solidity Coverage for test coverage
 - Gas Reporter for optimization
 
-### Code Quality Tools
+#### Code Quality Tools
 
 - Solhint for Solidity linting
 - ESLint for TypeScript
 - Prettier for formatting
 - TypeChain for type safety
 
-## Deployment Architecture
+### Deployment Architecture
 
 The deployment process follows a specific order to ensure proper contract initialization:
 
@@ -276,9 +316,9 @@ Each deployment script:
 - Supports different network configurations
 - Waits for appropriate confirmation counts
 
-## Security Considerations
+### Security Considerations
 
-### Smart Contract Security
+#### Smart Contract Security
 
 - Comprehensive reentrancy protection
 - Secure token handling patterns
@@ -286,7 +326,7 @@ Each deployment script:
 - Emergency pause functionality
 - Rate limiting on sensitive operations
 
-### Best Practices
+#### Best Practices
 
 - Pull over push payment patterns
 - Check-Effects-Interactions pattern
@@ -294,16 +334,16 @@ Each deployment script:
 - Gas optimization techniques
 - Extensive input validation
 
-### Audit Status
+#### Audit Status
 
 - Internal security review completed
 - External audit pending
 - Bug bounty program planned
 
-## License
+### License
 
 MIT
 
-## Contributing
+### Contributing
 
 Contributions are welcome! Please submit a pull request for review.

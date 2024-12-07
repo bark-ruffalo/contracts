@@ -1,0 +1,9 @@
+{
+  "filter_paths": "node_modules,test,mocks,contracts/TestnetToken.sol",
+  "solc_remaps": ["@openzeppelin/=node_modules/@openzeppelin/"],
+  "detectors_to_exclude": ["naming-convention", "external-function", "low-level-calls"],
+  "exclude_informational": true,
+  "exclude_low": true,
+  "exclude_medium": false,
+  "exclude_high": false
+}

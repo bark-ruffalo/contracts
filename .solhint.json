@@ -11,5 +11,6 @@
     "no-console": "error",
     "reentrancy": "error",
     "private-vars-leading-underscore": "warn"
-  }
+  },
+  "ignores": ["TestnetToken.sol"]
 }
