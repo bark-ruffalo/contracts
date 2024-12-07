@@ -18,24 +18,30 @@ The ecosystem consists of three main contracts:
 ## Core Contracts
 
 ### RewardsMarket.sol
+
 A sophisticated campaign management system that enables configurable reward distributions through token burning or spending mechanics.
 
 #### Key Features
-- **Campaign Management**
-  - Create campaigns with customizable parameters
-  - Modify existing campaign configurations 
-  - Deactivate campaigns when needed
-  - Support for both time-limited and unlimited duration campaigns
-  - Maximum reward caps with tracking
-  - Campaign activity status tracking
 
-- **Token Mechanics**
+- **Token Management**
+
+  - Optional and mutable reward token integration
   - Support for native RewardToken burning
   - Integration with any ERC20 token
   - Configurable token recipient (burn or transfer)
   - Safe token transfer handling via OpenZeppelin's SafeERC20
 
+- **Campaign Management**
+
+  - Create campaigns with customizable parameters
+  - Modify existing campaign configurations
+  - Deactivate campaigns when needed
+  - Support for both time-limited and unlimited duration campaigns
+  - Maximum reward caps with tracking
+  - Campaign activity status tracking
+
 - **Security Features**
+
   - ReentrancyGuard implementation
   - Pausable functionality for emergency stops
   - Owner-controlled administrative functions
@@ -49,6 +55,7 @@ A sophisticated campaign management system that enables configurable reward dist
   - User participation tracking
 
 #### Campaign Structure
+
 ```solidity
 struct Campaign {
   uint256 minBurnAmount;    // Minimum tokens required
@@ -65,15 +72,19 @@ struct Campaign {
 ```
 
 ### RewardToken.sol
+
 An ERC20 token implementation specifically designed for the rewards system.
 
 #### Features
+
 - **Token Standards**
+
   - ERC20 compliant
   - Burnable token functionality
   - Permit functionality for gasless approvals
 
 - **Access Control**
+
   - Role-based access control system
   - Configurable minting permissions
   - Controlled burning mechanics
@@ -84,16 +95,20 @@ An ERC20 token implementation specifically designed for the rewards system.
   - Supply tracking and management
 
 ### StakingVault.sol
+
 A flexible staking system that manages token deposits and rewards distribution.
 
 #### Key Features
+
 - **Staking Mechanics**
+
   - Flexible stake duration configuration
   - Minimum/maximum stake amounts
   - Stake locking with time constraints
   - Early withdrawal penalties
 
 - **Reward System**
+
   - Time-based reward calculation
   - Configurable reward rates
   - Compound interest mechanics
@@ -108,6 +123,7 @@ A flexible staking system that manages token deposits and rewards distribution.
 ## Development Commands
 
 ### Installation & Setup
+
 ```bash
 # Install dependencies
 yarn install
@@ -117,6 +133,7 @@ yarn compile
 ```
 
 ### Testing
+
 ```bash
 # Run all tests
 yarn test
@@ -130,18 +147,23 @@ yarn coverage
 The deployment is split into two main parts that can be deployed independently:
 
 #### 1. Staking System
+
 Deploys the RewardToken and StakingVault contracts on Base Sepolia:
+
 ```bash
 yarn deploy --tags Staking --network baseSepolia
 ```
 
 #### 2. Rewards Market
+
 Deploys the RewardsMarket contract (requires Staking system to be deployed first) on Base Sepolia:
+
 ```bash
 yarn deploy --tags RewardsMarket --network baseSepolia
 ```
 
 #### Other Deployment Options
+
 ```bash
 # Deploy everything at once
 yarn deploy
@@ -154,7 +176,9 @@ yarn verify:base-sepolia
 ```
 
 ### Manual Contract Verification
+
 If you need to verify contracts individually:
+
 ```bash
 # Verify RewardToken
 npx hardhat verify --network baseSepolia DEPLOYED_REWARD_TOKEN_ADDRESS
@@ -167,6 +191,7 @@ npx hardhat verify --network baseSepolia DEPLOYED_REWARDS_MARKET_ADDRESS REWARD_
 ```
 
 For example:
+
 ```bash
 # Example with real addresses
 npx hardhat verify --network baseSepolia 0x1234...5678
@@ -176,6 +201,7 @@ npx hardhat verify --network baseSepolia 0x8765...4321 0x1234...5678
 ### Environment Variables
 
 Required environment variables for deployment:
+
 ```bash
 DEPLOYER_PRIVATE_KEY=your_private_key
 PAWSY_TOKEN=pawsy_token_address  # Optional, defaults to mainnet address
@@ -183,6 +209,7 @@ LP_TOKEN=lp_token_address        # Optional, defaults to mainnet address
 ```
 
 ### Code Quality
+
 ```bash
 # Run linters
 yarn lint
@@ -192,6 +219,7 @@ yarn format
 ```
 
 ### Local Development
+
 ```bash
 # Start local hardhat network
 yarn hardhat node
@@ -203,12 +231,14 @@ yarn clean
 ## Development Environment
 
 ### Core Tools
+
 - Hardhat v2.19.x
 - TypeScript v5.x
 - Ethers.js v6.x
 - OpenZeppelin Contracts v5.x
 
 ### Testing Framework
+
 - Chai for assertions
 - Hardhat-deploy for deployment testing
 - Hardhat Network for local blockchain
@@ -216,6 +246,7 @@ yarn clean
 - Gas Reporter for optimization
 
 ### Code Quality Tools
+
 - Solhint for Solidity linting
 - ESLint for TypeScript
 - Prettier for formatting
@@ -226,6 +257,7 @@ yarn clean
 The deployment process follows a specific order to ensure proper contract initialization:
 
 1. **Staking System (`00_deployStaking.ts`)**
+
    - Deploys RewardToken
    - Deploys StakingVault
    - Transfers RewardToken ownership to StakingVault
@@ -237,6 +269,7 @@ The deployment process follows a specific order to ensure proper contract initia
    - Independent operation after deployment
 
 Each deployment script:
+
 - Checks for existing deployments
 - Handles contract verification
 - Includes proper error handling
@@ -246,6 +279,7 @@ Each deployment script:
 ## Security Considerations
 
 ### Smart Contract Security
+
 - Comprehensive reentrancy protection
 - Secure token handling patterns
 - Access control implementation
@@ -253,6 +287,7 @@ Each deployment script:
 - Rate limiting on sensitive operations
 
 ### Best Practices
+
 - Pull over push payment patterns
 - Check-Effects-Interactions pattern
 - Secure math operations
@@ -260,6 +295,7 @@ Each deployment script:
 - Extensive input validation
 
 ### Audit Status
+
 - Internal security review completed
 - External audit pending
 - Bug bounty program planned

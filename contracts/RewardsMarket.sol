@@ -29,7 +29,7 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 		address recipientAddress; // Where tokens go (address(0) means burn)
 	}
 
-	RewardToken public immutable rewardToken;
+	RewardToken public rewardToken;
 
 	// Campaign ID => Campaign details
 	mapping(uint256 => Campaign) public campaigns;
@@ -58,6 +58,10 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 		bool externalCallSuccess
 	);
 	event TokensRecovered(address indexed token, uint256 amount);
+	event RewardTokenUpdated(
+		address indexed oldToken,
+		address indexed newToken
+	);
 
 	error CampaignNotActive();
 	error CampaignExpired();
@@ -66,7 +70,9 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 	error ExternalCallFailed();
 
 	constructor(address _rewardToken) Ownable(msg.sender) {
-		rewardToken = RewardToken(_rewardToken);
+		if (_rewardToken != address(0)) {
+			rewardToken = RewardToken(_rewardToken);
+		}
 	}
 
 	/**
@@ -189,6 +195,7 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 		// Handle token transfer/burn
 		if (campaign.tokenAddress == address(0)) {
 			// Use rewardToken and burn
+			require(address(rewardToken) != address(0), "Reward token not set");
 			rewardToken.burnFrom(msg.sender, burnAmount);
 		} else {
 			// Use custom token and transfer to recipient
@@ -426,5 +433,15 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 				inactiveIndex++;
 			}
 		}
+	}
+
+	/**
+	 * @notice Updates the reward token address
+	 * @param _newRewardToken Address of the new reward token
+	 */
+	function setRewardToken(address _newRewardToken) external onlyOwner {
+		address oldToken = address(rewardToken);
+		rewardToken = RewardToken(_newRewardToken);
+		emit RewardTokenUpdated(oldToken, _newRewardToken);
 	}
 }

@@ -5,6 +5,7 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 const HIGH_GAS_LIMIT = 500000;
 const MED_GAS_LIMIT = 200000;
+const DEPLOY_GAS_LIMIT = 2_500_000;
 
 describe("RewardsMarket", function () {
   let rewardsMarket: RewardsMarket;
@@ -499,6 +500,46 @@ describe("RewardsMarket", function () {
       await expect(
         rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT }),
       ).to.be.revertedWithCustomError(rewardsMarket, "MaxRewardsReached");
+    });
+  });
+
+  describe("Reward Token Management", function () {
+    let localMarket: RewardsMarket;
+
+    beforeEach(async function () {
+      // Clear any previous deployments
+      const RewardsMarket = await ethers.getContractFactory("RewardsMarket");
+      localMarket = await RewardsMarket.deploy(ethers.ZeroAddress, { gasLimit: DEPLOY_GAS_LIMIT });
+    });
+
+    it("Should deploy without reward token", async function () {
+      expect(await localMarket.rewardToken()).to.equal(ethers.ZeroAddress);
+    });
+
+    it("Should allow setting reward token", async function () {
+      await localMarket.setRewardToken(await rewardToken.getAddress());
+      expect(await localMarket.rewardToken()).to.equal(await rewardToken.getAddress());
+    });
+
+    it("Should emit event when updating reward token", async function () {
+      await expect(localMarket.setRewardToken(await rewardToken.getAddress()))
+        .to.emit(localMarket, "RewardTokenUpdated")
+        .withArgs(ethers.ZeroAddress, await rewardToken.getAddress());
+    });
+
+    it("Should fail to trigger reward with unset reward token", async function () {
+      await localMarket.createCampaign(
+        ethers.parseEther("100"),
+        0,
+        0,
+        ethers.ZeroAddress,
+        "0x",
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+        { gasLimit: HIGH_GAS_LIMIT },
+      );
+
+      await expect(localMarket.triggerReward(0, ethers.parseEther("100"))).to.be.revertedWith("Reward token not set");
     });
   });
 });

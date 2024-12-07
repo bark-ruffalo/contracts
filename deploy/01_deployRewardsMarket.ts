@@ -1,6 +1,7 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
 import { verifyContract } from "../utils/verification";
+import { ethers } from "ethers";
 
 const deployRewardsMarket: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
@@ -10,15 +11,14 @@ const deployRewardsMarket: DeployFunction = async function (hre: HardhatRuntimeE
   const network = hre.network.name;
   console.log(`\n Deploying RewardsMarket to ${network}...\n`);
 
-  // Get RewardToken address
-  let rewardTokenAddress;
+  // Get RewardToken address (optional)
+  let rewardTokenAddress = ethers.ZeroAddress;
   try {
     const existingRewardToken = await get("RewardToken");
     rewardTokenAddress = existingRewardToken.address;
-    console.log("📝 Using existing RewardToken at:", rewardTokenAddress);
+    console.log("📝 Found existing RewardToken at:", rewardTokenAddress);
   } catch {
-    console.error("❌ RewardToken not found. Please deploy staking contracts first.");
-    process.exit(1);
+    console.log("⚠️ No RewardToken found. Deploying without reward token...");
   }
 
   // Deploy RewardsMarket
