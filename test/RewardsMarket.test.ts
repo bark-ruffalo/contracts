@@ -2,10 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { RewardsMarket, RewardToken, MockERC20 } from "../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-
-const HIGH_GAS_LIMIT = 500000;
-const MED_GAS_LIMIT = 200000;
-const DEPLOY_GAS_LIMIT = 2_500_000;
+import { GAS_LIMITS } from "./constants";
 
 describe("RewardsMarket", function () {
   let rewardsMarket: RewardsMarket;
@@ -21,21 +18,21 @@ describe("RewardsMarket", function () {
 
     // Deploy RewardToken
     const RewardToken = await ethers.getContractFactory("RewardToken");
-    rewardToken = await RewardToken.deploy({ gasLimit: 30000000 });
+    rewardToken = await RewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
     await rewardToken.waitForDeployment();
 
     // Deploy MockERC20 for testing custom token campaigns
     const MockERC20 = await ethers.getContractFactory("MockERC20");
-    mockToken = await MockERC20.deploy("Mock Token", "MTK", { gasLimit: 30000000 });
+    mockToken = await MockERC20.deploy("Mock Token", "MTK", { gasLimit: GAS_LIMITS.DEPLOY });
     await mockToken.waitForDeployment();
 
     // Deploy RewardsMarket
     const RewardsMarket = await ethers.getContractFactory("RewardsMarket");
-    rewardsMarket = await RewardsMarket.deploy(await rewardToken.getAddress(), { gasLimit: 30000000 });
+    rewardsMarket = await RewardsMarket.deploy(await rewardToken.getAddress(), { gasLimit: GAS_LIMITS.DEPLOY });
     await rewardsMarket.waitForDeployment();
 
     // Mint initial tokens to user for testing
-    await mockToken.mint(user.address, ethers.parseEther("1000"), { gasLimit: 30000000 });
+    await mockToken.mint(user.address, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.MED });
     // For RewardToken, we'll assume the user already has tokens (should be handled in token distribution)
   });
 
@@ -52,7 +49,7 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress, // use reward token
         ethers.ZeroAddress, // burn tokens
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       const campaign = await rewardsMarket.getCampaign(0);
@@ -72,7 +69,7 @@ describe("RewardsMarket", function () {
         "0x",
         await mockToken.getAddress(),
         recipient.address,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.HIGH },
       );
 
       const campaign = await rewardsMarket.getCampaign(0);
@@ -89,7 +86,7 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       const newMinAmount = ethers.parseEther("200");
@@ -102,7 +99,7 @@ describe("RewardsMarket", function () {
         "0x",
         await mockToken.getAddress(),
         recipient.address,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       const campaign = await rewardsMarket.getCampaign(0);
@@ -115,26 +112,67 @@ describe("RewardsMarket", function () {
     it("Should trigger custom token reward correctly", async function () {
       const transferAmount = ethers.parseEther("50");
 
+      // First mint tokens to the user
+      await mockToken.mint(user.address, transferAmount * 2n, { gasLimit: GAS_LIMITS.MED });
+
       await rewardsMarket.createCampaign(
         transferAmount,
-        0,
-        0,
-        ethers.ZeroAddress,
-        "0x",
-        await mockToken.getAddress(),
-        recipient.address,
-        { gasLimit: HIGH_GAS_LIMIT },
+        0, // no end date
+        0, // unlimited rewards
+        await mockToken.getAddress(), // burn token
+        "0x", // no calldata
+        await mockToken.getAddress(), // reward token
+        recipient.address, // recipient
+        { gasLimit: GAS_LIMITS.HIGH },
       );
 
+      // Approve mockToken
       await mockToken
         .connect(user)
-        .approve(await rewardsMarket.getAddress(), transferAmount, { gasLimit: HIGH_GAS_LIMIT });
+        .approve(await rewardsMarket.getAddress(), transferAmount * 2n, { gasLimit: GAS_LIMITS.MED });
 
       const initialBalance = await mockToken.balanceOf(recipient.address);
-      await rewardsMarket.connect(user).triggerReward(0, transferAmount, { gasLimit: HIGH_GAS_LIMIT });
-      const finalBalance = await mockToken.balanceOf(recipient.address);
 
+      await rewardsMarket.modifyCampaign(
+        0, // campaign ID
+        transferAmount, // keep same burn amount
+        0, // no end date
+        0, // unlimited rewards
+        ethers.ZeroAddress, // no target contract
+        "0x", // no calldata
+        await mockToken.getAddress(), // same token
+        recipient.address, // same recipient
+      );
+
+      await rewardsMarket.connect(user).triggerReward(0, transferAmount, { gasLimit: GAS_LIMITS.HIGH });
+
+      const finalBalance = await mockToken.balanceOf(recipient.address);
       expect(finalBalance).to.equal(initialBalance + transferAmount);
+    });
+
+    it("Should fail when max rewards reached", async function () {
+      await rewardsMarket.createCampaign(
+        ethers.parseEther("100"),
+        0,
+        1, // max 1 reward
+        ethers.ZeroAddress,
+        "0x",
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+        { gasLimit: GAS_LIMITS.HIGH },
+      );
+
+      // Ensure user has enough tokens
+      await rewardToken.mint(user.address, ethers.parseEther("200"), { gasLimit: GAS_LIMITS.MED });
+      await rewardToken
+        .connect(user)
+        .approve(await rewardsMarket.getAddress(), ethers.parseEther("200"), { gasLimit: GAS_LIMITS.MED });
+
+      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH });
+
+      await expect(
+        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH }),
+      ).to.be.revertedWithCustomError(rewardsMarket, "MaxRewardsReached");
     });
   });
 
@@ -151,7 +189,7 @@ describe("RewardsMarket", function () {
             "0x",
             ethers.ZeroAddress,
             ethers.ZeroAddress,
-            { gasLimit: HIGH_GAS_LIMIT },
+            { gasLimit: GAS_LIMITS.MED },
           ),
       )
         .to.be.revertedWithCustomError(rewardsMarket, "OwnableUnauthorizedAccount")
@@ -167,7 +205,7 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       await expect(
@@ -182,7 +220,7 @@ describe("RewardsMarket", function () {
             "0x",
             ethers.ZeroAddress,
             ethers.ZeroAddress,
-            { gasLimit: HIGH_GAS_LIMIT },
+            { gasLimit: GAS_LIMITS.MED },
           ),
       )
         .to.be.revertedWithCustomError(rewardsMarket, "OwnableUnauthorizedAccount")
@@ -202,11 +240,11 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       await expect(
-        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT }),
+        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.LOW }),
       ).to.be.revertedWithCustomError(rewardsMarket, "CampaignExpired");
     });
 
@@ -219,19 +257,19 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.HIGH },
       );
 
       // Ensure user has enough tokens
-      await rewardToken.mint(user.address, ethers.parseEther("200"), { gasLimit: 30000000 });
+      await rewardToken.mint(user.address, ethers.parseEther("200"), { gasLimit: GAS_LIMITS.MED });
       await rewardToken
         .connect(user)
-        .approve(await rewardsMarket.getAddress(), ethers.parseEther("200"), { gasLimit: 30000000 });
+        .approve(await rewardsMarket.getAddress(), ethers.parseEther("200"), { gasLimit: GAS_LIMITS.MED });
 
-      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT });
+      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH });
 
       await expect(
-        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT }),
+        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH }),
       ).to.be.revertedWithCustomError(rewardsMarket, "MaxRewardsReached");
     });
   });
@@ -248,7 +286,7 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       // Campaign 1: Active, future end date
@@ -261,7 +299,7 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
 
       // Campaign 2: Inactive (deactivated)
@@ -273,9 +311,9 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
-      await rewardsMarket.deactivateCampaign(2, { gasLimit: HIGH_GAS_LIMIT });
+      await rewardsMarket.deactivateCampaign(2, { gasLimit: GAS_LIMITS.LOW });
 
       // Campaign 3: Inactive (expired)
       const pastDate = Math.floor(Date.now() / 1000) - 3600;
@@ -287,7 +325,7 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
     });
 
@@ -372,12 +410,12 @@ describe("RewardsMarket", function () {
     it("Should recover tokens correctly", async function () {
       // First send some tokens to the contract
       const amount = ethers.parseEther("100");
-      await mockToken.mint(await rewardsMarket.getAddress(), amount, { gasLimit: MED_GAS_LIMIT });
+      await mockToken.mint(await rewardsMarket.getAddress(), amount, { gasLimit: GAS_LIMITS.MED });
 
       const initialBalance = await mockToken.balanceOf(owner.address);
 
       await rewardsMarket.recoverTokens(await mockToken.getAddress(), owner.address, amount, {
-        gasLimit: MED_GAS_LIMIT,
+        gasLimit: GAS_LIMITS.LOW,
       });
 
       const finalBalance = await mockToken.balanceOf(owner.address);
@@ -387,18 +425,18 @@ describe("RewardsMarket", function () {
     it("Should revert when recovering to zero address", async function () {
       await expect(
         rewardsMarket.recoverTokens(await mockToken.getAddress(), ethers.ZeroAddress, ethers.parseEther("1"), {
-          gasLimit: MED_GAS_LIMIT,
+          gasLimit: GAS_LIMITS.MED,
         }),
       ).to.be.revertedWith("Cannot recover to zero address");
     });
 
     it("Should revert when recovering more than balance", async function () {
       const amount = ethers.parseEther("100");
-      await mockToken.mint(await rewardsMarket.getAddress(), amount, { gasLimit: MED_GAS_LIMIT });
+      await mockToken.mint(await rewardsMarket.getAddress(), amount, { gasLimit: GAS_LIMITS.MED });
 
       await expect(
         rewardsMarket.recoverTokens(await mockToken.getAddress(), owner.address, amount + 1n, {
-          gasLimit: MED_GAS_LIMIT,
+          gasLimit: GAS_LIMITS.MED,
         }),
       ).to.be.reverted; // Will revert from SafeERC20
     });
@@ -408,7 +446,7 @@ describe("RewardsMarket", function () {
         rewardsMarket
           .connect(nonOwner)
           .recoverTokens(await mockToken.getAddress(), nonOwner.address, ethers.parseEther("1"), {
-            gasLimit: MED_GAS_LIMIT,
+            gasLimit: GAS_LIMITS.MED,
           }),
       )
         .to.be.revertedWithCustomError(rewardsMarket, "OwnableUnauthorizedAccount")
@@ -416,7 +454,7 @@ describe("RewardsMarket", function () {
     });
 
     it("Should pause and unpause correctly", async function () {
-      await rewardsMarket.pause({ gasLimit: MED_GAS_LIMIT });
+      await rewardsMarket.pause({ gasLimit: GAS_LIMITS.LOW });
       expect(await rewardsMarket.paused()).to.be.true;
 
       // Create a campaign while paused
@@ -429,21 +467,21 @@ describe("RewardsMarket", function () {
           "0x",
           ethers.ZeroAddress,
           ethers.ZeroAddress,
-          { gasLimit: HIGH_GAS_LIMIT },
+          { gasLimit: GAS_LIMITS.LOW },
         ),
       ).to.be.revertedWithCustomError(rewardsMarket, "EnforcedPause");
 
-      await rewardsMarket.unpause({ gasLimit: MED_GAS_LIMIT });
+      await rewardsMarket.unpause({ gasLimit: GAS_LIMITS.LOW });
       expect(await rewardsMarket.paused()).to.be.false;
     });
 
     it("Should not allow non-owner to pause/unpause", async function () {
-      await expect(rewardsMarket.connect(nonOwner).pause({ gasLimit: HIGH_GAS_LIMIT })).to.be.revertedWithCustomError(
+      await expect(rewardsMarket.connect(nonOwner).pause({ gasLimit: GAS_LIMITS.LOW })).to.be.revertedWithCustomError(
         rewardsMarket,
         "OwnableUnauthorizedAccount",
       );
 
-      await expect(rewardsMarket.connect(nonOwner).unpause({ gasLimit: HIGH_GAS_LIMIT })).to.be.revertedWithCustomError(
+      await expect(rewardsMarket.connect(nonOwner).unpause({ gasLimit: GAS_LIMITS.LOW })).to.be.revertedWithCustomError(
         rewardsMarket,
         "OwnableUnauthorizedAccount",
       );
@@ -458,47 +496,54 @@ describe("RewardsMarket", function () {
         0,
         ethers.ZeroAddress,
         "0x",
-        await mockToken.getAddress(),
-        recipient.address,
-        { gasLimit: HIGH_GAS_LIMIT },
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+        { gasLimit: GAS_LIMITS.HIGH },
       );
 
       expect(await rewardsMarket.getUserParticipationCount(user.address, 0)).to.equal(0);
 
-      await mockToken
-        .connect(user)
-        .approve(await rewardsMarket.getAddress(), ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT });
+      await rewardToken.mint(user.address, ethers.parseEther("300"), { gasLimit: GAS_LIMITS.MED });
 
-      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT });
+      await rewardToken
+        .connect(user)
+        .approve(await rewardsMarket.getAddress(), ethers.parseEther("300"), { gasLimit: GAS_LIMITS.MED });
+
+      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH });
 
       expect(await rewardsMarket.getUserParticipationCount(user.address, 0)).to.equal(1);
     });
 
     it("Should enforce max rewards per user", async function () {
+      // Create campaign with max 2 rewards per user
       await rewardsMarket.createCampaign(
         ethers.parseEther("100"),
         0,
-        2, // max 2 rewards total
+        2, // Set maxRewardsPerUser to 2
         ethers.ZeroAddress,
         "0x",
-        await mockToken.getAddress(),
-        recipient.address,
-        { gasLimit: HIGH_GAS_LIMIT },
+        ethers.ZeroAddress,
+        ethers.ZeroAddress,
+        { gasLimit: GAS_LIMITS.HIGH },
       );
 
-      await mockToken
+      // Mint enough tokens for all operations
+      await rewardToken.mint(user.address, ethers.parseEther("300"), { gasLimit: GAS_LIMITS.MED });
+
+      // Approve tokens for burning
+      await rewardToken
         .connect(user)
-        .approve(await rewardsMarket.getAddress(), ethers.parseEther("300"), { gasLimit: HIGH_GAS_LIMIT });
+        .approve(await rewardsMarket.getAddress(), ethers.parseEther("300"), { gasLimit: GAS_LIMITS.MED });
 
       // First reward should succeed
-      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT });
+      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH });
 
       // Second reward should succeed
-      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT });
+      await rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH });
 
-      // Third reward should fail
+      // Third reward should fail because max rewards per user is 2
       await expect(
-        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: HIGH_GAS_LIMIT }),
+        rewardsMarket.connect(user).triggerReward(0, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.HIGH }),
       ).to.be.revertedWithCustomError(rewardsMarket, "MaxRewardsReached");
     });
   });
@@ -509,7 +554,10 @@ describe("RewardsMarket", function () {
     beforeEach(async function () {
       // Clear any previous deployments
       const RewardsMarket = await ethers.getContractFactory("RewardsMarket");
-      localMarket = await RewardsMarket.deploy(ethers.ZeroAddress, { gasLimit: DEPLOY_GAS_LIMIT });
+      localMarket = await RewardsMarket.deploy(ethers.ZeroAddress, {
+        gasLimit: GAS_LIMITS.DEPLOY,
+      });
+      await localMarket.waitForDeployment();
     });
 
     it("Should deploy without reward token", async function () {
@@ -517,12 +565,18 @@ describe("RewardsMarket", function () {
     });
 
     it("Should allow setting reward token", async function () {
-      await localMarket.setRewardToken(await rewardToken.getAddress());
+      await localMarket.setRewardToken(await rewardToken.getAddress(), {
+        gasLimit: GAS_LIMITS.LOW,
+      });
       expect(await localMarket.rewardToken()).to.equal(await rewardToken.getAddress());
     });
 
     it("Should emit event when updating reward token", async function () {
-      await expect(localMarket.setRewardToken(await rewardToken.getAddress()))
+      await expect(
+        localMarket.setRewardToken(await rewardToken.getAddress(), {
+          gasLimit: GAS_LIMITS.LOW,
+        }),
+      )
         .to.emit(localMarket, "RewardTokenUpdated")
         .withArgs(ethers.ZeroAddress, await rewardToken.getAddress());
     });
@@ -536,10 +590,13 @@ describe("RewardsMarket", function () {
         "0x",
         ethers.ZeroAddress,
         ethers.ZeroAddress,
-        { gasLimit: HIGH_GAS_LIMIT },
+        { gasLimit: GAS_LIMITS.MED },
       );
-
-      await expect(localMarket.triggerReward(0, ethers.parseEther("100"))).to.be.revertedWith("Reward token not set");
+      await expect(
+        localMarket.triggerReward(0, ethers.parseEther("100"), {
+          gasLimit: GAS_LIMITS.LOW,
+        }),
+      ).to.be.revertedWith("Reward token not set");
     });
   });
 });

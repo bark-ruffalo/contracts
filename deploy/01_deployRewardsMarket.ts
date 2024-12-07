@@ -1,7 +1,8 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
 import { verifyContract } from "../utils/verification";
-import { ethers } from "ethers";
+import { GAS_LIMITS } from "../test/constants";
+import { ethers } from "hardhat";
 
 const deployRewardsMarket: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
@@ -35,6 +36,7 @@ const deployRewardsMarket: DeployFunction = async function (hre: HardhatRuntimeE
       log: true,
       autoMine: true,
       waitConfirmations: network === "localhost" ? 1 : 5,
+      gasLimit: GAS_LIMITS.DEPLOY,
     });
     rewardsMarketAddress = rewardsMarketDeployment.address;
     isNewDeployment = true;
