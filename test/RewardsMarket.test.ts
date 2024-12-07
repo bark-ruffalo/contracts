@@ -142,6 +142,7 @@ describe("RewardsMarket", function () {
         "0x", // no calldata
         await mockToken.getAddress(), // same token
         recipient.address, // same recipient
+        { gasLimit: GAS_LIMITS.LOW },
       );
 
       await rewardsMarket.connect(user).triggerReward(0, transferAmount, { gasLimit: GAS_LIMITS.HIGH });
