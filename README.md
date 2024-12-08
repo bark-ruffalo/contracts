@@ -120,6 +120,77 @@ A flexible staking system that manages token deposits and rewards distribution.
   - Slippage protection
   - Reentrancy protection
 
+#### Staking Rate Calculations
+
+The staking system uses Simple Interest Rate (SIR) calculations to determine reward rates. The rates are configured during deployment and can be calculated using the following formula:
+
+```
+Contract Rate = (Target SIR % / 100) * (Lock Period / Year in Seconds) * 10000
+```
+
+For example, for a 50-day lock period targeting 5% SIR:
+
+- Lock Period = 50 days = 4,320,000 seconds
+- Year = 365.2425 days = 31,556,952 seconds
+- Contract Rate = (5/100) _ (4,320,000/31,556,952) _ 10000 ≈ 68
+
+The contract uses these rates to calculate rewards:
+
+```solidity
+rewards = (amount * rate * stakingTime) / (lockPeriod * 10000)
+```
+
+#### Rate Configuration Tools
+
+##### Utility Script
+
+Use the `calculateStakingRates.ts` script to calculate contract rates:
+
+```bash
+# Calculate rates for specific SIRs and periods
+yarn ts-node scripts/calculateStakingRates.ts 1 2 3 4 --periods "50,100,200,400"
+
+# Example output:
+📊 Staking Rate Calculations:
+Target SIRs: 1%, 2%, 3%, 4%
+Calculated Rates: 68, 137, 274, 548
+
+Detailed Breakdown:
+50 days lock:
+  Target SIR: 1%
+  Rate to use in contract: 68
+  Actual SIR: 1.00%
+  Rate per period: 0.68%
+```
+
+##### Deployment Configuration
+
+The deployment script (`00_deployStaking.ts`) accepts target SIRs as input and automatically calculates the appropriate contract rates. Current configuration:
+
+```typescript
+// PAWSY token staking rates
+const PAWSY_TARGET_SIRS = [1, 2, 3, 4]; // Target SIRs in percentage
+const TIMELOCK_PERIODS = [
+  50 * 24 * 60 * 60, // 50 days
+  100 * 24 * 60 * 60, // 100 days
+  200 * 24 * 60 * 60, // 200 days
+  400 * 24 * 60 * 60, // 400 days
+];
+
+// LP token staking rates
+const LP_TARGET_SIRS = [5, 6, 7, 8]; // Higher rates for LP staking
+```
+
+To modify staking rates:
+
+1. Update the target SIRs in `00_deployStaking.ts`
+2. Use `calculateStakingRates.ts` to verify calculations
+3. Deploy with new rates:
+
+```bash
+yarn deploy --tags Staking --network baseSepolia
+```
+
 ## Development Commands
 
 ### Installation & Setup
