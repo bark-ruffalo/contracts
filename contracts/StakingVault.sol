@@ -397,6 +397,57 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		return totalStaked;
 	}
 
+	// Function to get all pools
+	function getPools() external view returns (Pool[] memory) {
+		return pools;
+	}
+
+	// Function to get locked users for a specific pool
+	function getLockedUsersByPool(
+		uint256 poolId
+	) external view returns (address[] memory) {
+		require(poolId < pools.length, "Invalid pool ID");
+
+		address[] memory poolLockedUsers = new address[](lockedUsers.length);
+		uint256 count = 0;
+
+		for (uint256 i = 0; i < lockedUsers.length; i++) {
+			LockInfo[] memory locks = userLocks[lockedUsers[i]];
+			for (uint256 j = 0; j < locks.length; j++) {
+				if (locks[j].poolId == poolId && locks[j].isLocked) {
+					poolLockedUsers[count] = lockedUsers[i];
+					count++;
+					break;
+				}
+			}
+		}
+
+		// Resize the array to fit actual count
+		address[] memory result = new address[](count);
+		for (uint256 i = 0; i < count; i++) {
+			result[i] = poolLockedUsers[i];
+		}
+		return result;
+	}
+
+	// Function to get total staking amount for a specific pool
+	function getStakingAmountByPool(
+		uint256 poolId
+	) external view returns (uint256) {
+		require(poolId < pools.length, "Invalid pool ID");
+
+		uint256 totalStaked = 0;
+		for (uint256 i = 0; i < lockedUsers.length; i++) {
+			LockInfo[] memory locks = userLocks[lockedUsers[i]];
+			for (uint256 j = 0; j < locks.length; j++) {
+				if (locks[j].poolId == poolId && locks[j].isLocked) {
+					totalStaked += locks[j].amount;
+				}
+			}
+		}
+		return totalStaked;
+	}
+
 	/**
 	 * @dev Retrieves the lock information for a specified user.
 	 * @param user The address of the user whose locks to retrieve.
