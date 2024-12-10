@@ -378,6 +378,25 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		return 0;
 	}
 
+	// Function to get total locked users
+	function getTotalLockedUsers() external view returns (uint256) {
+		return lockedUsers.length;
+	}
+
+	// Function to get total staked amount for all users
+	function getTotalStakedAmount() external view returns (uint256) {
+		uint256 totalStaked = 0;
+		for (uint256 i = 0; i < lockedUsers.length; i++) {
+			LockInfo[] memory locks = userLocks[lockedUsers[i]];
+			for (uint256 j = 0; j < locks.length; j++) {
+				if (locks[j].isLocked) {
+					totalStaked += locks[j].amount;
+				}
+			}
+		}
+		return totalStaked;
+	}
+
 	/**
 	 * @dev Retrieves the lock information for a specified user.
 	 * @param user The address of the user whose locks to retrieve.
