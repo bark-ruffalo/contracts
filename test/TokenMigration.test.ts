@@ -71,11 +71,20 @@ describe("TokenMigration", function () {
 
     it("Should revert if migration is paused", async function () {
       await tokenMigration.pause();
-      await expect(tokenMigration.connect(user1).migrateTokens(100)).to.be.revertedWith("Pausable: paused");
+      await expect(tokenMigration.connect(user1).migrateTokens(100))
+        .to.be.revertedWithCustomError(tokenMigration, "EnforcedPause");
     });
   });
 
   describe("Access Control", function () {
+    let PAUSER_ROLE: string;
+    let DEFAULT_ADMIN_ROLE: string;
+
+    beforeEach(async function() {
+      PAUSER_ROLE = await tokenMigration.PAUSER_ROLE();
+      DEFAULT_ADMIN_ROLE = await tokenMigration.DEFAULT_ADMIN_ROLE();
+    });
+
     it("Should allow admin to pause and unpause migration", async function () {
       await expect(tokenMigration.pause()).to.emit(tokenMigration, "MigrationPaused").withArgs(owner.address);
 
@@ -83,13 +92,13 @@ describe("TokenMigration", function () {
     });
 
     it("Should revert if non-admin tries to pause or unpause migration", async function () {
-      await expect(tokenMigration.connect(user1).pause()).to.be.revertedWith(
-        "AccessControl: account 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 is missing role 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a",
-      );
+      await expect(tokenMigration.connect(user1).pause())
+        .to.be.revertedWithCustomError(tokenMigration, "AccessControlUnauthorizedAccount")
+        .withArgs(user1.address, PAUSER_ROLE);
 
-      await expect(tokenMigration.connect(user1).unpause()).to.be.revertedWith(
-        "AccessControl: account 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 is missing role 0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a",
-      );
+      await expect(tokenMigration.connect(user1).unpause())
+        .to.be.revertedWithCustomError(tokenMigration, "AccessControlUnauthorizedAccount")
+        .withArgs(user1.address, PAUSER_ROLE);
     });
 
     it("Should allow admin to recover ERC20 tokens", async function () {
@@ -102,17 +111,14 @@ describe("TokenMigration", function () {
     });
 
     it("Should revert if non-admin tries to recover ERC20 tokens", async function () {
-      await expect(
-        tokenMigration.connect(user1).recoverERC20(await migratedToken.getAddress(), 100),
-      ).to.be.revertedWith(
-        "AccessControl: account 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 is missing role 0x0000000000000000000000000000000000000000000000000000000000000000",
-      );
+      await expect(tokenMigration.connect(user1).recoverERC20(await migratedToken.getAddress(), 100))
+        .to.be.revertedWithCustomError(tokenMigration, "AccessControlUnauthorizedAccount")
+        .withArgs(user1.address, DEFAULT_ADMIN_ROLE);
     });
 
     it("Should revert if trying to recover the old token", async function () {
-      await expect(tokenMigration.recoverERC20(await oldToken.getAddress(), 100)).to.be.revertedWith(
-        "Cannot recover old token",
-      );
+      await expect(tokenMigration.recoverERC20(await oldToken.getAddress(), 100))
+        .to.be.revertedWith("Cannot recover old token");
     });
   });
 });

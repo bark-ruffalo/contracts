@@ -83,7 +83,7 @@ contract TokenMigration is AccessControl, Pausable, ReentrancyGuard {
 	) external onlyRole(DEFAULT_ADMIN_ROLE) {
 		require(
 			tokenAddress != address(oldToken),
-			"Cannot recover migration token"
+			"Cannot recover old token"
 		);
 		IERC20(tokenAddress).safeTransfer(msg.sender, amount);
 	}
