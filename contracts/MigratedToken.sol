@@ -32,6 +32,17 @@ contract MigratedToken is Initializable, ERC20Upgradeable, AccessControlUpgradea
         _mint(to, amount);
     }
 
+    /**
+     * @dev Allows admin to recover any ERC20 tokens sent to this contract by mistake
+     */
+    function recoverTokens(
+        address tokenAddress,
+        address to,
+        uint256 amount
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        ERC20Upgradeable(tokenAddress).transfer(to, amount);
+    }
+
     // The following functions are overrides required by Solidity.
 
     function _update(address from, address to, uint256 value)
