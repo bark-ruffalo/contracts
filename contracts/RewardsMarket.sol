@@ -224,18 +224,18 @@ contract RewardsMarket is Ownable, ReentrancyGuard, Pausable {
 
 	/**
 	 * @dev Allows the owner to recover any ERC20 tokens mistakenly sent to the contract.
-	 * @param token The address of the ERC20 token to recover.
+	 * @param tokenAddress The address of the ERC20 token to recover.
 	 * @param to The address to send the recovered tokens to.
 	 * @param amount The amount of tokens to recover.
 	 * @notice Only callable by the contract owner.
 	 */
 	function recoverTokens(
-		IERC20 token,
+		IERC20 tokenAddress,
 		address to,
 		uint256 amount
 	) external onlyOwner {
 		require(to != address(0), "Cannot recover to zero address");
-		token.safeTransfer(to, amount);
+		tokenAddress.safeTransfer(to, amount);
 	}
 
 	/**
