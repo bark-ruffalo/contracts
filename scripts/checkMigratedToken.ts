@@ -4,7 +4,7 @@ import chalk from "chalk"; // yarn add chalk@4.1.2
 async function main() {
   try {
     // Contract addresses
-    const PROXY_ADDRESS = "0x286c27870b97bc1c79ebe3df890c72e7a7838817";
+    const PROXY_ADDRESS = "0xF297f893454bA8421653Cc1CEaA97E4a31E185F7";
     const DEPLOYER = "0xcfdc7f77c37268c14293ebd466768f6068d99461";
 
     console.log(chalk.blue("\n🔍 Checking MigratedToken Contract Status...\n"));
@@ -26,8 +26,29 @@ async function main() {
       console.log(`Error: ${error.message}\n`);
     }
 
-    // Check roles
-    console.log(chalk.yellow("\n🔑 Checking Roles:"));
+    // Check roles and their bytes32 values
+    console.log(chalk.yellow("\n🔑 Role Identifiers:"));
+    try {
+      const MINTER_ROLE = await migratedToken.MINTER_ROLE();
+      const DEFAULT_ADMIN_ROLE = await migratedToken.DEFAULT_ADMIN_ROLE();
+
+      console.log(`MINTER_ROLE: ${MINTER_ROLE}`);
+      console.log(`DEFAULT_ADMIN_ROLE: ${DEFAULT_ADMIN_ROLE}`);
+      
+      // Calculate role hashes manually to verify
+      const calculatedMinterRole = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
+      const calculatedDefaultAdminRole = ethers.ZeroHash;
+
+      console.log("\nRole Hash Verification:");
+      console.log(`MINTER_ROLE matches calculation: ${MINTER_ROLE === calculatedMinterRole ? chalk.green('✅') : chalk.red('❌')}`);
+      console.log(`DEFAULT_ADMIN_ROLE matches known value: ${DEFAULT_ADMIN_ROLE === calculatedDefaultAdminRole ? chalk.green('✅') : chalk.red('❌')}`);
+    } catch (error) {
+      console.log(chalk.red("❌ Failed to get role identifiers"));
+      console.log(`Error: ${error.message}\n`);
+    }
+
+    // Check role assignments (simplified version)
+    console.log(chalk.yellow("\n👤 Role Assignments:"));
     try {
       const MINTER_ROLE = await migratedToken.MINTER_ROLE();
       const DEFAULT_ADMIN_ROLE = await migratedToken.DEFAULT_ADMIN_ROLE();
@@ -38,36 +59,27 @@ async function main() {
       console.log(`Deployer has MINTER_ROLE: ${hasMinterRole ? chalk.green('✅') : chalk.red('❌')}`);
       console.log(`Deployer has DEFAULT_ADMIN_ROLE: ${hasAdminRole ? chalk.green('✅') : chalk.red('❌')}`);
     } catch (error) {
-      console.log(chalk.red("❌ Failed to check roles"));
+      console.log(chalk.red("❌ Failed to check role assignments"));
       console.log(`Error: ${error.message}\n`);
     }
 
-    // Check total supply and deployer balance
-    console.log(chalk.yellow("\n💰 Token Supply Information:"));
-    try {
-      const totalSupply = await migratedToken.totalSupply();
-      const deployerBalance = await migratedToken.balanceOf(DEPLOYER);
-
-      console.log(`Total Supply: ${ethers.formatEther(totalSupply)} tokens`);
-      console.log(`Deployer Balance: ${ethers.formatEther(deployerBalance)} tokens`);
-    } catch (error) {
-      console.log(chalk.red("❌ Failed to check supply information"));
-      console.log(`Error: ${error.message}\n`);
-    }
-
-    // Check if contract is initialized (indirect check)
+    // Improved initialization check
     console.log(chalk.yellow("\n🔧 Initialization Status:"));
     try {
-      // Try to call initialize function
-      const initializeTx = await migratedToken.initialize.staticCall(DEPLOYER, DEPLOYER);
-      console.log(chalk.red("⚠️ Contract might NOT be initialized (initialize call didn't revert)"));
+      const name = await migratedToken.name();
+      const symbol = await migratedToken.symbol();
+      const totalSupply = await migratedToken.totalSupply();
+      
+      const isInitialized = name === "Migrated PAWSY" && 
+                           symbol === "mPAWSY" && 
+                           totalSupply > 0;
+                           
+      console.log(isInitialized ? 
+        chalk.green("✅ Contract is initialized (verified by state)") : 
+        chalk.red("❌ Contract might not be initialized"));
     } catch (error) {
-      if (error.message.includes("already initialized")) {
-        console.log(chalk.green("✅ Contract is initialized"));
-      } else {
-        console.log(chalk.red("❓ Unclear initialization status"));
-        console.log(`Error: ${error.message}`);
-      }
+      console.log(chalk.red("❌ Failed to check initialization status"));
+      console.log(`Error: ${error.message}\n`);
     }
 
     // Implementation address (if using transparent proxy)
