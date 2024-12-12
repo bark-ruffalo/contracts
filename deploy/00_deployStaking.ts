@@ -4,12 +4,7 @@ import { ethers } from "hardhat";
 import { verifyContract } from "../utils/verification";
 
 const YEAR_IN_SECONDS = 365.2425 * 24 * 60 * 60;
-const TIMELOCK_PERIODS = [
-  50 * 24 * 60 * 60, // 50 days
-  100 * 24 * 60 * 60, // 100 days
-  200 * 24 * 60 * 60, // 200 days
-  400 * 24 * 60 * 60, // 400 days
-];
+const TIMELOCK_PERIODS = [50 * 24 * 60 * 60, 100 * 24 * 60 * 60, 200 * 24 * 60 * 60, 400 * 24 * 60 * 60];
 
 // Calculate rates for PAWSY
 const PAWSY_TARGET_SIRS = [1, 2, 3, 4]; // Target SIRs in percentage
@@ -127,13 +122,13 @@ const deployStaking: DeployFunction = async function (hre: HardhatRuntimeEnviron
     const pawsyRates = [...PAWSY_RATES];
     const lpRates = [...LP_RATES];
 
-    const addPawsyPool = await stakingVault.addPool(PAWSY_TOKEN, lockPeriods, pawsyRates);
-    await addPawsyPool.wait(network === "localhost" ? 1 : 5);
-    console.log("✅ PAWSY pool added");
+    // const addPawsyPool = await stakingVault.addPool(PAWSY_TOKEN, lockPeriods, pawsyRates);
+    // await addPawsyPool.wait(network === "localhost" ? 1 : 5);
+    // console.log("✅ PAWSY pool added");
 
-    const addLpPool = await stakingVault.addPool(LP_TOKEN, lockPeriods, lpRates);
-    await addLpPool.wait(network === "localhost" ? 1 : 5);
-    console.log("✅ LP pool added");
+    // const addLpPool = await stakingVault.addPool(LP_TOKEN, lockPeriods, lpRates);
+    // await addLpPool.wait(network === "localhost" ? 1 : 5);
+    // console.log("✅ LP pool added");
 
     // Verify new contracts
     console.log("\n🔍 Verifying new contracts...\n");
