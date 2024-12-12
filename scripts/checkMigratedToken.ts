@@ -4,7 +4,7 @@ import chalk from "chalk"; // yarn add chalk@4.1.2
 async function main() {
   try {
     // Contract addresses
-    const PROXY_ADDRESS = "0xF94Cc0EcB84dE25FC7aa5411a437902eaaB4d410";
+    const PROXY_ADDRESS = "0x1437819DF58Ad648e35ED4f6F642d992684B2004";
     const DEPLOYER = "0xcfdc7f77c37268c14293ebd466768f6068d99461";
 
     console.log(chalk.blue("\n🔍 Checking MigratedToken Contract Status...\n"));

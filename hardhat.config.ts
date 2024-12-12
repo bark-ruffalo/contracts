@@ -105,12 +105,18 @@ const config: HardhatUserConfig = {
       accounts: [deployerPrivateKey],
     },
     base: {
-      url: "https://mainnet.base.org",
-      accounts: [deployerPrivateKey],
+      url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
+      ledgerAccounts: ["0xCfdc7f77c37268c14293ebD466768F6068D99461"],
+      ledgerOptions: {
+        derivationFunction: (x) => `m/44'/60'/0'/0/${x}`
+      },
     },
     baseSepolia: {
       url: "https://sepolia.base.org",
       ledgerAccounts: ["0xCfdc7f77c37268c14293ebD466768F6068D99461"],
+      ledgerOptions: {
+        derivationFunction: (x) => `m/44'/60'/0'/0/${x}`
+      },
     },
     scrollSepolia: {
       url: "https://sepolia-rpc.scroll.io",
