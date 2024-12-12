@@ -1,7 +1,7 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
 import { verifyContract } from "../utils/verification";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
@@ -19,12 +19,13 @@ const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntime
     migratedTokenAddress = existingMigratedToken.address;
     console.log("📝 MigratedToken already deployed at:", migratedTokenAddress);
   } catch {
-    const migratedToken = await deploy("MigratedToken", {
-      from: deployer,
-      args: [],
-      log: true,
+    console.log("Deploying MigratedToken as a proxy...");
+    const MigratedToken = await ethers.getContractFactory("MigratedToken");
+    const migratedToken = await upgrades.deployProxy(MigratedToken, [deployer, deployer], {
+      initializer: "initialize",
     });
-    migratedTokenAddress = migratedToken.address;
+    await migratedToken.waitForDeployment();
+    migratedTokenAddress = await migratedToken.getAddress();
     isNewMigratedTokenDeployment = true;
     console.log("🔨 MigratedToken deployed to:", migratedTokenAddress);
   }
@@ -87,4 +88,4 @@ const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntime
 
 export default deployTokenMigration;
 deployTokenMigration.tags = ["TokenMigration", "TM"];
-deployTokenMigration.dependencies = ["MigratedToken"]; 
+deployTokenMigration.dependencies = ["MigratedToken"];
