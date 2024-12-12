@@ -35,8 +35,8 @@
     "@types/mocha": "^10.0.8",
     "@types/prettier": "^2",
     "@types/qrcode": "^1",
-    "@typescript-eslint/eslint-plugin": "latest",
-    "@typescript-eslint/parser": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
     "chai": "^4.5.0",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.2",
+    "@openzeppelin/contracts-upgradeable": "^5.1.0",
     "envfile": "^6.18.0",
     "qrcode": "^1.5.1"
   },

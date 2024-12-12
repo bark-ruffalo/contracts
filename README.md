@@ -9,13 +9,54 @@
 
 ## Overview
 
-The ecosystem consists of three main contracts:
+The ecosystem consists of four main contracts:
 
 1. **Staking vault:** Stake and lock $PAWSY for various periods of time.
 2. **Reward token:** Only mintable by the staking vault; tracks user ecosystem contributions.
 3. **Rewards market:** Enables devs/DAO to create campaigns for token exchanges (e.g., reward tokens for NFTs).
+4. **Token Migration:** Facilitates migration from $PAWSY to $mPAWSY, a new token with enhanced features.
 
 ## Core Contracts
+
+### TokenMigration.sol
+
+A contract that manages the migration process from the existing $PAWSY token to the new $mPAWSY token.
+
+#### Key Features
+
+- **Migration Mechanics**
+  - One-way migration from $PAWSY to $mPAWSY
+  - 1:1 token exchange ratio
+  - Supports partial and complete migrations
+  - Migrated tokens are burned to maintain supply
+
+- **Access Control**
+  - Only allows migration from token holders
+  - Admin functions for migration control and setup
+
+- **Integration**
+  - Works with existing $PAWSY token contract
+  - Mints new $mPAWSY tokens during migration
+
+### MigratedToken.sol
+
+The new $mPAWSY token contract with additional features and upgradability.
+
+#### Key Features
+
+- **ERC20 Extensions**
+  - Mintable supply for reward distribution
+  - Permit functionality for gasless approvals
+  - Votes tracking by block number
+  - Detailed NatSpec comments
+
+- **Access Control**
+  - Role-based access control for minting and admin functions
+  - Ownership transfer capabilities
+
+- **Upgradability**
+  - Implements transparent proxy pattern for upgradeability
+  - Allows addition of new features and fixes post-deployment
 
 ### RewardsMarket.sol
 
@@ -24,7 +65,6 @@ A sophisticated campaign management system that enables configurable reward dist
 #### Key Features
 
 - **Token Management**
-
   - Optional and mutable reward token integration
   - Support for native RewardToken burning
   - Integration with any ERC20 token
@@ -32,7 +72,6 @@ A sophisticated campaign management system that enables configurable reward dist
   - Safe token transfer handling via OpenZeppelin's SafeERC20
 
 - **Campaign Management**
-
   - Create campaigns with customizable parameters
   - Modify existing campaign configurations
   - Deactivate campaigns when needed
@@ -41,7 +80,6 @@ A sophisticated campaign management system that enables configurable reward dist
   - Campaign activity status tracking
 
 - **Security Features**
-
   - ReentrancyGuard implementation
   - Pausable functionality for emergency stops
   - Owner-controlled administrative functions
@@ -78,13 +116,11 @@ An ERC20 token implementation specifically designed for the rewards system.
 #### Features
 
 - **Token Standards**
-
   - ERC20 compliant
   - Burnable token functionality
   - Permit functionality for gasless approvals
 
 - **Access Control**
-
   - Role-based access control system
   - Configurable minting permissions
   - Controlled burning mechanics
@@ -101,14 +137,12 @@ A flexible staking system that manages token deposits and rewards distribution.
 #### Key Features
 
 - **Staking Mechanics**
-
   - Flexible stake duration configuration
   - Minimum/maximum stake amounts
   - Stake locking with time constraints
   - Early withdrawal penalties
 
 - **Reward System**
-
   - Time-based reward calculation
   - Configurable reward rates
   - Compound interest mechanics
@@ -215,7 +249,7 @@ yarn coverage
 
 ### Deployment
 
-The deployment is split into two main parts that can be deployed independently:
+The deployment is split into three main parts that can be deployed independently:
 
 #### 1. Staking System
 
@@ -233,7 +267,15 @@ Deploys the RewardsMarket contract (requires Staking system to be deployed first
 yarn deploy --tags RewardsMarket --network baseSepolia
 ```
 
-#### Other Deployment Options
+#### 3. Token Migration
+
+Deploys the TokenMigration and MigratedToken contracts on Base Sepolia:
+
+```bash
+yarn deploy --tags Migration --network baseSepolia
+```
+
+### Other Deployment Options
 
 ```bash
 # Deploy everything at once
@@ -368,7 +410,6 @@ Common Slither detectors include:
 The deployment process follows a specific order to ensure proper contract initialization:
 
 1. **Staking System (`00_deployStaking.ts`)**
-
    - Deploys RewardToken
    - Deploys StakingVault
    - Transfers RewardToken ownership to StakingVault
@@ -378,6 +419,12 @@ The deployment process follows a specific order to ensure proper contract initia
    - Requires RewardToken to be deployed
    - Deploys RewardsMarket with RewardToken integration
    - Independent operation after deployment
+
+3. **Token Migration (`02_deployTokenMigration.ts`)**
+   - Requires existing $PAWSY token
+   - Deploys MigratedToken ($mPAWSY)
+   - Deploys TokenMigration with $PAWSY and $mPAWSY integration
+   - Enables migration from $PAWSY to $mPAWSY
 
 Each deployment script:
 
