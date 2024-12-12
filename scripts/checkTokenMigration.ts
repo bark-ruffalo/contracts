@@ -6,7 +6,7 @@ async function main() {
     // Contract addresses
     const TOKEN_MIGRATION_ADDRESS = "0xb77f643DB213CdC6da0cc3c926Fd010B983819C2";
     const OLD_TOKEN_ADDRESS = "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a";
-    const MIGRATED_TOKEN_PROXY = "0xBF71BD090E3f25066615dF7f4ccA90a7e6Cc6505";
+    const MIGRATED_TOKEN_PROXY = "0xF94Cc0EcB84dE25FC7aa5411a437902eaaB4d410";
     const DEPLOYER = "0xcfdc7f77c37268c14293ebd466768f6068d99461";
 
     console.log(chalk.blue("\n🔍 Checking TokenMigration Contract Status...\n"));
