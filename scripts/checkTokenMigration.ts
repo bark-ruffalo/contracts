@@ -4,9 +4,9 @@ import chalk from "chalk";
 async function main() {
   try {
     // Contract addresses
-    const TOKEN_MIGRATION_ADDRESS = "0x56b1dAb1e3f6C85DEFFaB69Fc7A1dd1C75336459";
+    const TOKEN_MIGRATION_ADDRESS = "0xb77f643DB213CdC6da0cc3c926Fd010B983819C2";
     const OLD_TOKEN_ADDRESS = "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a";
-    const MIGRATED_TOKEN_PROXY = "0xF297f893454bA8421653Cc1CEaA97E4a31E185F7";
+    const MIGRATED_TOKEN_PROXY = "0xBF71BD090E3f25066615dF7f4ccA90a7e6Cc6505";
     const DEPLOYER = "0xcfdc7f77c37268c14293ebd466768f6068d99461";
 
     console.log(chalk.blue("\n🔍 Checking TokenMigration Contract Status...\n"));
