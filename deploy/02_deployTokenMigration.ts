@@ -87,23 +87,15 @@ const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntime
 
   if (isNewTokenMigrationDeployment) {
     const tokenMigrationContract = await ethers.getContractAt("TokenMigration", tokenMigrationAddress);
-    
+
     // Grant roles to deployer
     const PAUSER_ROLE = await tokenMigrationContract.PAUSER_ROLE();
-    const DEFAULT_ADMIN_ROLE = await tokenMigrationContract.DEFAULT_ADMIN_ROLE();
-    
+
     try {
       await tokenMigrationContract.grantRole(PAUSER_ROLE, deployer);
       console.log("✅ Granted PAUSER_ROLE to deployer");
     } catch (error) {
       console.log("ℹ️ Failed to grant PAUSER_ROLE:", error.message);
-    }
-
-    try {
-      await tokenMigrationContract.grantRole(DEFAULT_ADMIN_ROLE, deployer);
-      console.log("✅ Granted DEFAULT_ADMIN_ROLE to deployer");
-    } catch (error) {
-      console.log("ℹ️ Failed to grant DEFAULT_ADMIN_ROLE:", error.message);
     }
   }
 };
