@@ -86,5 +86,5 @@ const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntime
 };
 
 export default deployTokenMigration;
-deployTokenMigration.tags = ["TokenMigration"];
+deployTokenMigration.tags = ["TokenMigration", "TM"];
 deployTokenMigration.dependencies = ["MigratedToken"]; 

@@ -9,6 +9,7 @@ import "solidity-coverage";
 import "@nomicfoundation/hardhat-verify";
 import "hardhat-deploy";
 import "hardhat-deploy-ethers";
+import "@nomicfoundation/hardhat-ledger";
 
 // If not set, it uses the hardhat account 0 private key.
 const deployerPrivateKey =
@@ -108,7 +109,9 @@ const config: HardhatUserConfig = {
     },
     baseSepolia: {
       url: "https://sepolia.base.org",
-      accounts: [deployerPrivateKey],
+      ledgerAccounts: [
+        "0xCfdc7f77c37268c14293ebD466768F6068D99461",
+      ],
     },
     scrollSepolia: {
       url: "https://sepolia-rpc.scroll.io",
