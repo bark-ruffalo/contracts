@@ -35,7 +35,8 @@ contract TokenMigration is AccessControl, Pausable, ReentrancyGuard {
 		newToken = MigratedToken(_newToken);
 
 		// Set DEFAULT_ADMIN_ROLE
-		grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+		_grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+		_grantRole(PAUSER_ROLE, msg.sender);
 	}
 
 	/**

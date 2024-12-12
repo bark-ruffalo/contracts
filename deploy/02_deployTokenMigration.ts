@@ -84,20 +84,6 @@ const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntime
       console.log("ℹ️ TokenMigration already verified");
     }
   }
-
-  if (isNewTokenMigrationDeployment) {
-    const tokenMigrationContract = await ethers.getContractAt("TokenMigration", tokenMigrationAddress);
-
-    // Grant roles to deployer
-    const PAUSER_ROLE = await tokenMigrationContract.PAUSER_ROLE();
-
-    try {
-      await tokenMigrationContract.grantRole(PAUSER_ROLE, deployer);
-      console.log("✅ Granted PAUSER_ROLE to deployer");
-    } catch (error) {
-      console.log("ℹ️ Failed to grant PAUSER_ROLE:", error.message);
-    }
-  }
 };
 
 export default deployTokenMigration;
