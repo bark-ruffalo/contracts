@@ -527,4 +527,20 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	function unpause() external onlyOwner {
 		_unpause();
 	}
+
+	/**
+	 * @dev Returns the total amount of tokens actively staked by a user across all locks.
+	 * @param user The address of the user to check.
+	 * @return totalStaked The total amount of tokens still in the staking contract (in wei).
+	 * @notice Counts tokens in both active locks and unlocked-but-not-withdrawn positions.
+	 */
+	function getActiveStakedBalance(address user) external view returns (uint256 totalStaked) {
+		LockInfo[] storage locks = userLocks[user];
+		for (uint256 i = 0; i < locks.length; i++) {
+			// Include amount if either locked OR not yet withdrawn
+			if (locks[i].amount > 0) {
+				totalStaked += locks[i].amount;
+			}
+		}
+	}
 }
