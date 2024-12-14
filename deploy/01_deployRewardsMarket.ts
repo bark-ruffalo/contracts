@@ -7,10 +7,23 @@ import { ethers } from "hardhat";
 const deployRewardsMarket: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
   const { deploy, get } = deployments;
-  const { deployer } = await getNamedAccounts();
+  
+  // Get deployer address either from named accounts or ledger
+  let deployer: string;
+  try {
+    ({ deployer } = await getNamedAccounts());
+  } catch (error) {
+    // If using ledger, get the first ledger account
+    const network = hre.network.config;
+    if (network.ledgerAccounts && network.ledgerAccounts.length > 0) {
+      deployer = network.ledgerAccounts[0];
+    } else {
+      throw new Error("No deployer account available");
+    }
+  }
 
   const network = hre.network.name;
-  console.log(`\n Deploying RewardsMarket to ${network}...\n`);
+  console.log(`\nDeploying RewardsMarket to ${network} with account: ${deployer}...\n`);
 
   // Get RewardToken address (optional)
   let rewardTokenAddress = ethers.ZeroAddress;
@@ -51,5 +64,5 @@ const deployRewardsMarket: DeployFunction = async function (hre: HardhatRuntimeE
 };
 
 export default deployRewardsMarket;
-deployRewardsMarket.tags = ["RewardsMarket"];
+deployRewardsMarket.tags = ["RewardsMarket", "Rewards"];
 deployRewardsMarket.dependencies = ["Staking"];

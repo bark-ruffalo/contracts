@@ -275,6 +275,23 @@ Deploys the TokenMigration and MigratedToken contracts on Base Sepolia:
 yarn deploy --tags Migration --network baseSepolia
 ```
 
+### Deployment Tags
+
+The deployment scripts use tags to enable granular deployments. Available tags:
+
+- `Staking`: Deploys the staking system (`00_deployStaking.ts`)
+- `RewardsMarket`: Deploys the rewards market (`01_deployRewardsMarket.ts`)
+- `Migration`: Deploys the token migration system (`02_deployTokenMigration.ts`) 
+- `TestnetToken`: Deploys a test token on the testnet (`03_deployTestnetToken.ts`)
+
+To deploy with specific tags:
+
+```bash
+yarn deploy --tags Staking,RewardsMarket
+```
+
+This allows for targeted deployments and avoids unnecessary redeployments of unmodified contracts.
+
 ### Other Deployment Options
 
 ```bash
@@ -313,12 +330,60 @@ npx hardhat verify --network baseSepolia 0x8765...4321 0x1234...5678
 
 ### Environment Variables
 
-Required environment variables for deployment:
+The project uses a `.env` file to manage sensitive information and configuration. The `.env.example` file provides a template:
 
 ```bash
-DEPLOYER_PRIVATE_KEY=your_private_key
-PAWSY_TOKEN=pawsy_token_address  # Optional, defaults to mainnet address
-LP_TOKEN=lp_token_address        # Optional, defaults to mainnet address
+# Forking RPC URL for local testing
+FORKING_URL=
+
+# Private key for the deployer account
+DEPLOYER_PRIVATE_KEY=
+
+# Public key of the Ledger hardware wallet 
+# If not set, defaults to DEPLOYER_PRIVATE_KEY
+LEDGER_PUBLIC_KEY=
+
+# Etherscan API key for contract verification  
+ETHERSCAN_API_KEY=
+
+# Alchemy API key for network access
+ALCHEMY_API_KEY=
+
+# Enable gas reporting
+REPORT_GAS=true
+
+# Base network RPC URL
+BASE_RPC_URL=
+
+# Existing token addresses  
+PAWSY_TOKEN=
+LP_TOKEN=
+mPAWSY_TOKEN=
+```
+
+To use the `.env` file:
+
+1. Copy `.env.example` to `.env`
+2. Fill in the required values
+3. Access variables via `process.env.VARIABLE_NAME`
+
+Note: The `LEDGER_PUBLIC_KEY` variable is optional. If not set, the deployment scripts will default to using the `DEPLOYER_PRIVATE_KEY` for deployments.
+
+### Utility Scripts
+
+The project includes several utility scripts to assist with development and testing:
+
+- `generateAccount.ts`: Generates a new random private key and saves it to the `.env` file.
+- `listAccount.ts`: Displays the deployer account address and balances across different networks.
+
+To run the scripts:
+
+```bash
+# Generate a new deployer account
+yarn generate
+
+# List deployer account details
+yarn list  
 ```
 
 ### Code Quality

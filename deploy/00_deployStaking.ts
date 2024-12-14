@@ -6,6 +6,11 @@ import { verifyContract } from "../utils/verification";
 const YEAR_IN_SECONDS = 365.2425 * 24 * 60 * 60;
 const TIMELOCK_PERIODS = [50 * 24 * 60 * 60, 100 * 24 * 60 * 60, 200 * 24 * 60 * 60, 400 * 24 * 60 * 60];
 
+// Move addresses to config file or env variables
+const PAWSY_TOKEN = process.env.PAWSY_TOKEN || "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a";
+const mPAWSY_TOKEN = process.env.mPAWSY_TOKEN || "0x1437819DF58Ad648e35ED4f6F642d992684B2004";
+const LP_TOKEN = process.env.LP_TOKEN || "0x96fc64cae162c1cb288791280c3eff2255c330a8";
+
 // Calculate rates for PAWSY
 const PAWSY_TARGET_SIRS = [1, 2, 3, 4]; // Target SIRs in percentage
 const PAWSY_RATES = PAWSY_TARGET_SIRS.map((sir, index) => {
@@ -13,14 +18,22 @@ const PAWSY_RATES = PAWSY_TARGET_SIRS.map((sir, index) => {
   return Math.round((sir / 100) * (period / YEAR_IN_SECONDS) * 10000);
 });
 
+// Calculate rates for mPAWSY
+const mPAWSY_TARGET_SIRS = [5, 6, 7, 8]; // Target SIRs in percentage
+const mPAWSY_RATES = mPAWSY_TARGET_SIRS.map((sir, index) => {
+  const period = TIMELOCK_PERIODS[index];
+  return Math.round((sir / 100) * (period / YEAR_IN_SECONDS) * 10000);
+});
+
 // Calculate rates for LP
-const LP_TARGET_SIRS = [5, 6, 7, 8]; // Target SIRs in percentage
+const LP_TARGET_SIRS = [9, 10, 11, 12]; // Target SIRs in percentage
 const LP_RATES = LP_TARGET_SIRS.map((sir, index) => {
   const period = TIMELOCK_PERIODS[index];
   return Math.round((sir / 100) * (period / YEAR_IN_SECONDS) * 10000);
 });
 
 console.log("PAWSY_RATES:", PAWSY_RATES);
+console.log("mPAWSY_RATES:", mPAWSY_RATES);
 console.log("LP_RATES:", LP_RATES);
 
 // Calculate and display yearly SIR for each timelock period
@@ -44,20 +57,30 @@ function calculateAndDisplaySIR(name: string, rates: readonly number[]) {
   });
 }
 
-// Move addresses to config file or env variables
-const PAWSY_TOKEN = process.env.PAWSY_TOKEN || "0x29e39327b5B1E500B87FC0fcAe3856CD8F96eD2a";
-const LP_TOKEN = process.env.LP_TOKEN || "0x96fc64cae162c1cb288791280c3eff2255c330a8";
-
 const deployStaking: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
   const { deploy, get } = deployments;
-  const { deployer } = await getNamedAccounts();
+  
+  // Get deployer address either from named accounts or ledger
+  let deployer: string;
+  try {
+    ({ deployer } = await getNamedAccounts());
+  } catch (error) {
+    // If using ledger, get the first ledger account
+    const network = hre.network.config;
+    if (network.ledgerAccounts && network.ledgerAccounts.length > 0) {
+      deployer = network.ledgerAccounts[0];
+    } else {
+      throw new Error("No deployer account available");
+    }
+  }
 
   const network = hre.network.name;
   console.log(`\n📡 Deploying staking contracts to ${network}...\n`);
 
   // Display SIR calculations
   calculateAndDisplaySIR("PAWSY", PAWSY_RATES);
+  calculateAndDisplaySIR("mPAWSY", mPAWSY_RATES);
   calculateAndDisplaySIR("LP", LP_RATES);
 
   // Deploy RewardToken
@@ -120,15 +143,20 @@ const deployStaking: DeployFunction = async function (hre: HardhatRuntimeEnviron
     // Convert readonly arrays to regular arrays for contract interaction
     const lockPeriods = [...TIMELOCK_PERIODS];
     const pawsyRates = [...PAWSY_RATES];
+    const mPawsyRates = [...mPAWSY_RATES];
     const lpRates = [...LP_RATES];
 
-    // const addPawsyPool = await stakingVault.addPool(PAWSY_TOKEN, lockPeriods, pawsyRates);
-    // await addPawsyPool.wait(network === "localhost" ? 1 : 5);
-    // console.log("✅ PAWSY pool added");
+    const addPawsyPool = await stakingVault.addPool(PAWSY_TOKEN, lockPeriods, pawsyRates);
+    await addPawsyPool.wait(network === "localhost" ? 1 : 5);
+    console.log("✅ PAWSY pool added");
 
-    // const addLpPool = await stakingVault.addPool(LP_TOKEN, lockPeriods, lpRates);
-    // await addLpPool.wait(network === "localhost" ? 1 : 5);
-    // console.log("✅ LP pool added");
+    const addMpawsyPool = await stakingVault.addPool(mPAWSY_TOKEN, lockPeriods, mPawsyRates);
+    await addMpawsyPool.wait(network === "localhost" ? 1 : 5);
+    console.log("✅ mPAWSY pool added");
+
+    const addLpPool = await stakingVault.addPool(LP_TOKEN, lockPeriods, lpRates);
+    await addLpPool.wait(network === "localhost" ? 1 : 5);
+    console.log("✅ LP pool added");
 
     // Verify new contracts
     console.log("\n🔍 Verifying new contracts...\n");

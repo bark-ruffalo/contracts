@@ -13,12 +13,13 @@ import "@nomicfoundation/hardhat-ledger";
 import "@openzeppelin/hardhat-upgrades";
 
 // If not set, it uses the hardhat account 0 private key.
-const deployerPrivateKey =
-  process.env.DEPLOYER_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const deployerPrivateKey = process.env.DEPLOYER_PRIVATE_KEY;
 // If not set, it uses ours Etherscan default API key.
 const etherscanApiKey = process.env.ETHERSCAN_API_KEY || "DNXJA8RX2Q3VZ4URQIWP7Z68CJXQZSC6AW";
 // forking rpc url
 const forkingURL = process.env.FORKING_URL || "";
+// Ledger public key
+const ledgerPublicKey = process.env.LEDGER_PUBLIC_KEY;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -52,87 +53,21 @@ const config: HardhatUserConfig = {
       gasPrice: "auto",
       allowUnlimitedContractSize: true,
     },
-    mainnet: {
-      url: `https://cloudflare-eth.com`,
-      accounts: [deployerPrivateKey],
-    },
-    sepolia: {
-      url: `https://rpc2.sepolia.org`,
-      accounts: [deployerPrivateKey],
-    },
-    arbitrum: {
-      url: `https://arb1.arbitrum.io/rpc`,
-      accounts: [deployerPrivateKey],
-    },
-    arbitrumSepolia: {
-      url: `https://sepolia-rollup.arbitrum.io/rpc`,
-      accounts: [deployerPrivateKey],
-    },
-    optimism: {
-      url: `https://mainnet.optimism.io`,
-      accounts: [deployerPrivateKey],
-    },
-    optimismSepolia: {
-      url: `https://sepolia.optimism.io`,
-      accounts: [deployerPrivateKey],
-    },
-    polygon: {
-      url: `https://polygon-rpc.com`,
-      accounts: [deployerPrivateKey],
-    },
-    polygonAmoy: {
-      url: `https://rpc-amoy.polygon.technology`,
-      accounts: [deployerPrivateKey],
-    },
-    polygonMumbai: {
-      url: `https://rpc.ankr.com/polygon_mumbai`,
-      accounts: [deployerPrivateKey],
-    },
-    polygonZkEvm: {
-      url: `https://zkevm-rpc.com`,
-      accounts: [deployerPrivateKey],
-    },
-    polygonZkEvmTestnet: {
-      url: `https://rpc.public.zkevm-test.net`,
-      accounts: [deployerPrivateKey],
-    },
-    gnosis: {
-      url: "https://rpc.gnosischain.com",
-      accounts: [deployerPrivateKey],
-    },
-    chiado: {
-      url: "https://rpc.chiadochain.net",
-      accounts: [deployerPrivateKey],
-    },
     base: {
       url: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-      ledgerAccounts: ["0xCfdc7f77c37268c14293ebD466768F6068D99461"],
+      accounts: deployerPrivateKey ? [deployerPrivateKey] : undefined,
+      ledgerAccounts: !deployerPrivateKey && ledgerPublicKey ? [ledgerPublicKey] : undefined,
       ledgerOptions: {
         derivationFunction: (x) => `m/44'/60'/0'/0/${x}`
       },
     },
     baseSepolia: {
       url: "https://sepolia.base.org",
-      ledgerAccounts: ["0xCfdc7f77c37268c14293ebD466768F6068D99461"],
+      accounts: deployerPrivateKey ? [deployerPrivateKey] : undefined,
+      ledgerAccounts: !deployerPrivateKey && ledgerPublicKey ? [ledgerPublicKey] : undefined,
       ledgerOptions: {
         derivationFunction: (x) => `m/44'/60'/0'/0/${x}`
       },
-    },
-    scrollSepolia: {
-      url: "https://sepolia-rpc.scroll.io",
-      accounts: [deployerPrivateKey],
-    },
-    scroll: {
-      url: "https://rpc.scroll.io",
-      accounts: [deployerPrivateKey],
-    },
-    pgn: {
-      url: "https://rpc.publicgoods.network",
-      accounts: [deployerPrivateKey],
-    },
-    pgnTestnet: {
-      url: "https://sepolia.publicgoods.network",
-      accounts: [deployerPrivateKey],
     },
   },
   etherscan: {

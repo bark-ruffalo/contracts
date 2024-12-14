@@ -6,7 +6,20 @@ import { ethers, upgrades } from "hardhat";
 const deployTokenMigration: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
   const { deploy, get } = deployments;
-  const { deployer } = await getNamedAccounts();
+  
+  // Get deployer address either from named accounts or ledger
+  let deployer: string;
+  try {
+    ({ deployer } = await getNamedAccounts());
+  } catch (error) {
+    // If using ledger, get the first ledger account
+    const network = hre.network.config;
+    if (network.ledgerAccounts && network.ledgerAccounts.length > 0) {
+      deployer = network.ledgerAccounts[0];
+    } else {
+      throw new Error("No deployer account available");
+    }
+  }
 
   const network = hre.network.name;
   console.log(`\nDeploying contracts to ${network} with account: ${deployer}\n`);
