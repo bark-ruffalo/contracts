@@ -243,4 +243,112 @@ describe("StakingVault", function () {
       ).to.be.revertedWithCustomError(stakingVault, "OwnableUnauthorizedAccount");
     });
   });
+
+  describe("Reward Token Management", function () {
+    it("Should allow owner to set reward token", async function () {
+      const NewRewardToken = await ethers.getContractFactory("RewardToken");
+      const newRewardToken = await NewRewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
+      
+      await stakingVault.setRewardToken(await newRewardToken.getAddress(), { gasLimit: GAS_LIMITS.LOW });
+      expect(await stakingVault.rewardToken()).to.equal(await newRewardToken.getAddress());
+    });
+
+    it("Should not allow non-owner to set reward token", async function () {
+      const NewRewardToken = await ethers.getContractFactory("RewardToken");
+      const newRewardToken = await NewRewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
+      
+      await expect(
+        stakingVault.connect(user1).setRewardToken(await newRewardToken.getAddress(), { gasLimit: GAS_LIMITS.LOW })
+      ).to.be.revertedWithCustomError(stakingVault, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  describe("Pool Reward Rate Management", function () {
+    beforeEach(async function () {
+      const lockPeriods = [WEEK, MONTH];
+      const rewardRates = [100, 200];
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+    });
+
+    it("Should update reward rates correctly", async function () {
+      const newRewardRates = [150, 300];
+      await expect(stakingVault.updateRewardRates(0, newRewardRates, { gasLimit: GAS_LIMITS.HIGH }))
+        .to.emit(stakingVault, "RewardRatesUpdated")
+        .withArgs(0, newRewardRates);
+
+      const pools = await stakingVault.getPools();
+      const pool = pools[0];
+      
+      expect(pool.rewardRates[0]).to.equal(150);
+      expect(pool.rewardRates[1]).to.equal(300);
+    });
+
+    it("Should revert when updating reward rates with mismatched length", async function () {
+      const newRewardRates = [150, 300, 450];
+      await expect(
+        stakingVault.updateRewardRates(0, newRewardRates, { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Mismatched lock periods and reward rates");
+    });
+  });
+
+  describe("Pool and User Statistics", function () {
+    beforeEach(async function () {
+      const lockPeriods = [WEEK, MONTH];
+      const rewardRates = [100, 200];
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+      
+      // Add another pool
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+
+      // Stake in different pools
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      await stakingVault.connect(user2).stake(1, ethers.parseEther("200"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+    });
+
+    it("Should return correct total locked users", async function () {
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(2);
+    });
+
+    it("Should return correct total staked amount", async function () {
+      expect(await stakingVault.getTotalStakedAmount()).to.equal(ethers.parseEther("300"));
+    });
+
+    it("Should return all pools correctly", async function () {
+      const pools = await stakingVault.getPools();
+      expect(pools.length).to.equal(2);
+      expect(pools[0].isActive).to.be.true;
+      expect(pools[1].isActive).to.be.true;
+    });
+
+    it("Should return correct locked users by pool", async function () {
+      const pool0Users = await stakingVault.getLockedUsersByPool(0);
+      const pool1Users = await stakingVault.getLockedUsersByPool(1);
+      
+      expect(pool0Users.length).to.equal(1);
+      expect(pool1Users.length).to.equal(1);
+      expect(pool0Users[0]).to.equal(user1.address);
+      expect(pool1Users[0]).to.equal(user2.address);
+    });
+
+    it("Should return correct staking amount by pool", async function () {
+      expect(await stakingVault.getStakingAmountByPool(0)).to.equal(ethers.parseEther("100"));
+      expect(await stakingVault.getStakingAmountByPool(1)).to.equal(ethers.parseEther("200"));
+    });
+
+    it("Should return correct active staked balance for users", async function () {
+      expect(await stakingVault.getActiveStakedBalance(user1.address)).to.equal(ethers.parseEther("100"));
+      expect(await stakingVault.getActiveStakedBalance(user2.address)).to.equal(ethers.parseEther("200"));
+    });
+
+    it("Should handle non-existent pool queries", async function () {
+      await expect(stakingVault.getLockedUsersByPool(99)).to.be.revertedWith("Invalid pool ID");
+      await expect(stakingVault.getStakingAmountByPool(99)).to.be.revertedWith("Invalid pool ID");
+    });
+  });
 });
