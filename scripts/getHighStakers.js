@@ -132,7 +132,7 @@ const STAKING_VAULT_ABI = [
 ];
 
 // Constants
-const DAO_ADDRESS = "0xCfdc7f77c37268c14293ebD466768F6068D99461";
+const DAO_ADDRESS = "0xCfdc7f77c37268c14293ebD466768F6068D99461".toLowerCase();
 const IGNORED_POOL = 1;  // Only ignore pool 1 for DAO address
 
 async function main() {
@@ -169,8 +169,8 @@ async function main() {
 
   // Get all locked users addresses and calculate total staked
   for (let i = 0; i < totalLockedUsers; i++) {
-    // Get user address
-    const user = await stakingVault.lockedUsers(i);
+    // Get user address and normalize to lowercase
+    const user = (await stakingVault.lockedUsers(i)).toLowerCase();
     await delay(REQUEST_DELAY_MS);
 
     // Check balance
@@ -182,7 +182,7 @@ async function main() {
     
     const activeLocks = locks.filter(lock => {
       // For DAO address, ignore only pool 1
-      if (user.toLowerCase() === DAO_ADDRESS.toLowerCase()) {
+      if (user === DAO_ADDRESS) {
         return lock.isLocked && Number(lock.poolId) !== IGNORED_POOL;
       }
       return lock.isLocked;
@@ -250,12 +250,12 @@ async function main() {
     });
   }
 
-  // Calculate permilles (parts per thousand) and sort by balance descending
+  // Calculate per mills (parts per thousand) and sort by balance descending
   highStakers.forEach(staker => {
     // Convert to number for precise division
     const balance = Number(ethers.formatUnits(staker.balance, 18));
     const total = Number(ethers.formatUnits(totalStaked, 18));
-    staker.permille = (balance / total) * 1000;
+    staker.perMill = (balance / total) * 1000;
   });
   highStakers.sort((a, b) => b.balance > a.balance ? 1 : -1);
 
@@ -282,7 +282,7 @@ async function main() {
     console.log("Adjusted Values (with modifiers applied):");
     console.log("----------------------------------------");
     stakersWithAdjusted.forEach(staker => {
-      const adjustedPermille = (staker.adjustedTotal / totalAdjusted) * 1000;
+      const adjustedPerMill = (staker.adjustedTotal / totalAdjusted) * 1000;
       
       console.log(`\n${staker.address}:`);
       console.log(`Raw total: ${ethers.formatUnits(staker.balance, 18)}`);
@@ -303,7 +303,7 @@ async function main() {
         console.log(`  Total adjusted value: ${totalAdjusted.toFixed(2)}`);
       }
       
-      console.log(`Final share: ${adjustedPermille.toFixed(4)}‰${!SKIP_INCOME_CALC ? ` = ${formatUSD(calculateIncomeShare(adjustedPermille))}` : ''}`);
+      console.log(`Final share: ${adjustedPerMill.toFixed(4)}‰${!SKIP_INCOME_CALC ? ` = ${formatUSD(calculateIncomeShare(adjustedPerMill))}` : ''}`);
     });
 
     // Show income distribution summary only if not skipping calculations
@@ -313,8 +313,8 @@ async function main() {
       console.log(`Total to distribute: ${formatUSD(TOTAL_INCOME_USD)}`);
       let totalDistributed = 0;
       stakersWithAdjusted.forEach(staker => {
-        const adjustedPermille = (staker.adjustedTotal / totalAdjusted) * 1000;
-        const incomeShare = calculateIncomeShare(adjustedPermille);
+        const adjustedPerMill = (staker.adjustedTotal / totalAdjusted) * 1000;
+        const incomeShare = calculateIncomeShare(adjustedPerMill);
         totalDistributed += incomeShare;
         const percentage = (incomeShare / TOTAL_INCOME_USD) * 100;
         console.log(`${staker.address}:`);
@@ -323,26 +323,26 @@ async function main() {
       console.log(`\nTotal distributed: ${formatUSD(totalDistributed)}`);
     }
 
-    // Show final permille summary table
-    console.log("\n📊 Final Permille Distribution:");
+    // Show final per mill summary table
+    console.log("\n📊 Final Per Mill Distribution:");
     console.log("-----------------------------");
-    console.log("Address                                      | Adjusted Value | Permille (‰)");
+    console.log("Address                                      | Adjusted Value | Per Mill (‰)");
     console.log("-------------------------------------------|---------------|-------------");
     stakersWithAdjusted.forEach(staker => {
-      const adjustedPermille = (staker.adjustedTotal / totalAdjusted) * 1000;
+      const adjustedPerMill = (staker.adjustedTotal / totalAdjusted) * 1000;
       const paddedAddress = staker.address.padEnd(43, ' ');
       const paddedValue = staker.adjustedTotal.toFixed(2).padStart(13, ' ');
-      const paddedPermille = adjustedPermille.toFixed(4).padStart(11, ' ');
-      console.log(`${paddedAddress}| ${paddedValue} | ${paddedPermille}`);
+      const paddedPerMill = adjustedPerMill.toFixed(4).padStart(11, ' ');
+      console.log(`${paddedAddress}| ${paddedValue} | ${paddedPerMill}`);
     });
     console.log("-------------------------------------------|---------------|-------------");
-    const totalPermille = stakersWithAdjusted.reduce((sum, staker) => 
+    const totalPerMill = stakersWithAdjusted.reduce((sum, staker) => 
       sum + (staker.adjustedTotal / totalAdjusted) * 1000, 0
     );
     const paddedTotal = "TOTAL".padEnd(43, ' ');
     const paddedTotalValue = totalAdjusted.toFixed(2).padStart(13, ' ');
-    const paddedTotalPermille = totalPermille.toFixed(4).padStart(11, ' ');
-    console.log(`${paddedTotal}| ${paddedTotalValue} | ${paddedTotalPermille}`);
+    const paddedTotalPerMill = totalPerMill.toFixed(4).padStart(11, ' ');
+    console.log(`${paddedTotal}| ${paddedTotalValue} | ${paddedTotalPerMill}`);
   }
   
   // Save results to JSON file only if not simulating
@@ -361,13 +361,13 @@ async function main() {
       totalStaked: ethers.formatUnits(totalStaked, 18),
       totalAdjustedStaked: totalAdjusted.toFixed(2),
       stakers: stakersWithAdjusted.map(staker => {
-        const adjustedPermille = (staker.adjustedTotal / totalAdjusted) * 1000;
+        const adjustedPerMill = (staker.adjustedTotal / totalAdjusted) * 1000;
         return {
           address: staker.address,
           rawHoldings: ethers.formatUnits(staker.balance, 18),
-          rawPermille: staker.permille.toFixed(4),
+          rawPerMill: staker.perMill.toFixed(4),
           adjustedTotal: staker.adjustedTotal.toFixed(2),
-          adjustedPermille: adjustedPermille.toFixed(4),
+          adjustedPerMill: adjustedPerMill.toFixed(4),
           poolStakes: Object.fromEntries(
             Object.entries(staker.poolStakes).map(([poolId, amount]) => [
               `${poolId} (${getPoolTokenName(poolId)})`,
