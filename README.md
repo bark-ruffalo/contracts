@@ -1,5 +1,7 @@
 # Contracts used in the Bark Ruffalo ecosystem
 
+[On GitHub](https://github.com/bark-ruffalo), we've open-sourced our **contracts, our scripts, and the UI (website)**. Any other crypto or AI agent project may use them; we just ask you to consider airdropping our DAO address (`0xc638FB83d2bad5dD73d4C7c7deC0445d46a0716F`) or our stakers (we can provide a list of addresses, or you can use `getLockedUsersByPool()` on [our staking contract](https://basescan.org/address/0xA6FaCD417faf801107bF19F4a24062Ff15AE9C61#readContract)). We'll help you get started if you need help with the code (@nebu_human and @BatataKawaii on Telegram, or @TrulyADog on X).
+
 > **🎁 Free to Use for any crypto project or AI Agent builder!**  
 > We just ask the teams to consider airdropping our DAO address or our $PAWSY holders with a small amount.
 >
