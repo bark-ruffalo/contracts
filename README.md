@@ -244,14 +244,35 @@ yarn coverage
 
 ### Deployment
 
-The deployment is split into three main parts that can be deployed independently:
+The deployment is split into several parts that can be deployed independently:
 
-#### 1. Staking System
+#### 1. Staking System (3-part deployment)
 
-Deploys the RewardToken and StakingVault contracts on Base Sepolia:
+The staking system deployment has been split into three separate scripts for greater flexibility and control:
+
+a. **Deploy RewardToken**:
 
 ```bash
-yarn deploy --tags Staking --network baseSepolia
+yarn deploy --tags RewardToken --network baseSepolia
+```
+
+b. **Deploy StakingVault and Grant Minter Role**:
+
+```bash
+yarn deploy --tags StakingVault --network baseSepolia
+```
+This script deploys the StakingVault contract and grants it the minter role on the RewardToken (without transferring ownership).
+
+c. **Add Staking Pools**:
+
+```bash
+yarn deploy --tags StakingPools --network baseSepolia
+```
+
+You can also deploy the entire staking system at once using the dependency chain:
+
+```bash
+yarn deploy --tags StakingPools --network baseSepolia
 ```
 
 #### 2. Rewards Market
@@ -274,7 +295,10 @@ yarn deploy --tags Migration --network baseSepolia
 
 The deployment scripts use tags to enable granular deployments. Available tags:
 
-- `Staking`: Deploys the staking system (`00_deployStaking.ts`)
+- Staking System:
+  - `RewardToken`: Deploys only the reward token (`00_part_1_deployRewardToken.ts`)
+  - `StakingVault`: Deploys the staking vault and sets up reward token (`00_part_2_deployStakingVault.ts`)
+  - `StakingPools`: Adds pools to the staking vault (`00_part_3_addStakingPools.ts`)
 - `RewardsMarket`: Deploys the rewards market (`01_deployRewardsMarket.ts`)
 - `Migration`: Deploys the token migration system (`02_deployTokenMigration.ts`) 
 - `TestnetToken`: Deploys a test token on the testnet (`03_deployTestnetToken.ts`)
@@ -282,7 +306,7 @@ The deployment scripts use tags to enable granular deployments. Available tags:
 To deploy with specific tags:
 
 ```bash
-yarn deploy --tags Staking,RewardsMarket
+yarn deploy --tags RewardToken,StakingVault
 ```
 
 This allows for targeted deployments and avoids unnecessary redeployments of unmodified contracts.

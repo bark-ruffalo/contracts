@@ -22,7 +22,8 @@
     "coverage:clean": "rimraf coverage coverage.json",
     "clean": "ts-node scripts/clean.ts",
     "deploy:base-sepolia": "hardhat deploy --network baseSepolia",
-    "deploy:base": "hardhat deploy --network baseSepolia"
+    "deploy:base": "hardhat deploy --network baseSepolia",
+    "verify:reward-token:base": "hardhat run scripts/verifyRewardToken.ts --network base"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.7",
