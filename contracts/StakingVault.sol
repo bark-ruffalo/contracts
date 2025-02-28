@@ -202,6 +202,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		
 		LockInfo storage lockInfo = userLocks[msg.sender][lockId];
 		require(lockInfo.poolId == poolId, "Pool ID mismatch");
+		require(lockInfo.amount > 0, "Nothing to unstake");
 		
 		Pool memory pool = pools[poolId];
 		uint256 amount = lockInfo.amount;
@@ -214,34 +215,8 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			// Normal unlock flow
 			require(block.timestamp >= lockInfo.unlockTime, "Lock period not yet over");
 			lockInfo.isLocked = false;
-			
-			// Check if user has any remaining locked positions
-			bool hasActiveLocks = false;
-			for (uint256 i = 0; i < userLocks[msg.sender].length; i++) {
-				if (i != lockId && userLocks[msg.sender][i].isLocked) {
-					hasActiveLocks = true;
-					break;
-				}
-			}
-			
-			// If no active locks remain, remove user from lockedUsers array
-			if (!hasActiveLocks) {
-				for (uint256 i = 0; i < lockedUsers.length; i++) {
-					if (lockedUsers[i] == msg.sender) {
-						// Swap with the last element
-						lockedUsers[i] = lockedUsers[lockedUsers.length - 1];
-						// Remove the last element
-						lockedUsers.pop();
-						break;
-					}
-				}
-			}
-		} else {
-			// Already unlocked (e.g., via emergencyUnlockAll)
-			// Ensure it hasn't been withdrawn already
-			require(amount > 0, "Tokens already withdrawn");
 		}
-
+		
 		// Set amount to 0 to prevent double withdrawals
 		lockInfo.amount = 0;
 		
@@ -258,7 +233,36 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		// Set last claim time
 		lockInfo.lastClaimTime = block.timestamp;
 
+		// Check if user has any remaining locked positions after this unstake
+		_cleanUpUserIfNeeded(msg.sender);
+
 		emit Unstaked(msg.sender, poolId, amount, pendingRewards);
+	}
+
+	/**
+	 * @dev Check if user has any remaining locked positions and remove from lockedUsers if not
+	 * @param user The address of the user to check
+	 */
+	function _cleanUpUserIfNeeded(address user) internal {
+		bool hasActiveLocks = false;
+		for (uint256 i = 0; i < userLocks[user].length; i++) {
+			if (userLocks[user][i].isLocked && userLocks[user][i].amount > 0) {
+				hasActiveLocks = true;
+				break;
+			}
+		}
+		
+		// If no active locks remain, remove user from lockedUsers array
+		if (!hasActiveLocks) {
+			for (uint256 i = 0; i < lockedUsers.length; i++) {
+				if (lockedUsers[i] == user) {
+					// Swap with the last element and pop (gas efficient removal)
+					lockedUsers[i] = lockedUsers[lockedUsers.length - 1];
+					lockedUsers.pop();
+					break;
+				}
+			}
+		}
 	}
 
 	/**
@@ -282,9 +286,26 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256 unlockTime = block.timestamp + lockPeriod;
 		uint256 lockId = userLocks[user].length;
 
+		// Only add to lockedUsers array if this is their first lock
+		bool userAlreadyTracked = false;
 		if (userLocks[user].length == 0) {
+			// First lock for this user
 			lockedUsers.push(user);
+		} else {
+			// Check if user already has active locks
+			for (uint256 i = 0; i < userLocks[user].length; i++) {
+				if (userLocks[user][i].isLocked && userLocks[user][i].amount > 0) {
+					userAlreadyTracked = true;
+					break;
+				}
+			}
+			
+			// If user has no active locks (but had locks before), add them back to lockedUsers
+			if (!userAlreadyTracked) {
+				lockedUsers.push(user);
+			}
 		}
+		
 		userLocks[user].push(
 			LockInfo({
 				lockId: lockId,
@@ -315,24 +336,18 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		require(lockId < userLocks[user].length, "Invalid lock ID");
 
 		LockInfo storage lockInfo = userLocks[user][lockId];
+		require(lockInfo.amount > 0, "Nothing to unlock");
 		require(block.timestamp >= lockInfo.unlockTime, "Lock period not over");
 		require(lockInfo.isLocked, "Lock already unlocked");
 
 		lockInfo.isLocked = false;
-		if (userLocks[user].length == 0) {
-			for (uint256 i = 0; i < lockedUsers.length; i++) {
-				if (lockedUsers[i] == user) {
-					// Swap with the last element
-					lockedUsers[i] = lockedUsers[lockedUsers.length - 1];
-					// Remove the last element
-					lockedUsers.pop();
-				}
-			}
-		}
+		
+		// Check if the user has any remaining locked tokens
+		_cleanUpUserIfNeeded(user);
 
 		emit Unlocked(user, lockId, lockInfo.amount, lockInfo.poolId);
 
-		return (lockInfo.amount, lockInfo.isLocked);
+		return (lockInfo.amount, false);
 	}
 
 	/**
@@ -341,9 +356,13 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @param lockId The ID of the lock the rewards are being claimed for.
 	 * @custom:events Emits RewardsClaimed event.
 	 */
-	function claimRewards(uint256 poolId, uint256 lockId) external {
+	function claimRewards(uint256 poolId, uint256 lockId) external nonReentrant {
 		require(poolId < pools.length, "Invalid pool ID");
 		require(lockId < userLocks[msg.sender].length, "Invalid lock ID");
+		
+		LockInfo storage lockInfo = userLocks[msg.sender][lockId];
+		require(lockInfo.poolId == poolId, "Pool ID mismatch");
+		require(lockInfo.amount > 0, "No staked tokens");
 
 		// Calculate pending rewards
 		uint256 pendingRewards = calculateRewards(msg.sender, lockId);
@@ -356,7 +375,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		lifetimeRewards[msg.sender] += pendingRewards;
 
 		// Update last claim time
-		LockInfo storage lockInfo = userLocks[msg.sender][lockId];
 		lockInfo.lastClaimTime = block.timestamp;
 
 		emit RewardsClaimed(msg.sender, poolId, pendingRewards);
@@ -372,28 +390,40 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		address user,
 		uint256 lockId
 	) public view returns (uint256) {
-		uint256 rewards = 0;
-		uint256 currentTime = block.timestamp;
+		require(lockId < userLocks[user].length, "Invalid lock ID");
+		
 		LockInfo memory lockInfo = userLocks[user][lockId];
+		if (lockInfo.amount == 0) {
+			return 0;
+		}
 
 		// Fetch reward rate
 		uint256 rewardRate = getRewardRate(
 			lockInfo.poolId,
 			lockInfo.lockPeriod
 		);
-		require(rewardRate > 0, "Invalid lock period.");
-
-		if (lockInfo.isLocked) {
-			uint256 stakingTime = currentTime -
-				(
-					lockInfo.lastClaimTime > 0
-						? lockInfo.lastClaimTime
-						: lockInfo.unlockTime - lockInfo.lockPeriod
-				);
-			rewards +=
-				(lockInfo.amount * rewardRate * stakingTime) /
-				(lockInfo.lockPeriod * 10000);
+		if (rewardRate == 0) {
+			return 0;
 		}
+
+		uint256 rewards = 0;
+		uint256 currentTime = block.timestamp;
+		
+		// Calculate staking time - either since last claim or since stake start time
+		uint256 startTime = lockInfo.lastClaimTime > 0 
+			? lockInfo.lastClaimTime 
+			: lockInfo.unlockTime - lockInfo.lockPeriod;
+		
+		// If we haven't reached startTime yet (shouldn't happen but for safety)
+		if (currentTime <= startTime) {
+			return 0;
+		}
+		
+		uint256 stakingTime = currentTime - startTime;
+		
+		// Calculate rewards regardless of lock status - this allows rewards to be calculated
+		// even after emergency unlock
+		rewards = (lockInfo.amount * rewardRate * stakingTime) / (lockInfo.lockPeriod * 10000);
 
 		return rewards;
 	}
@@ -408,13 +438,37 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256 poolId,
 		uint256 lockPeriod
 	) internal view returns (uint256) {
+		if (poolId >= pools.length) {
+			return 0;
+		}
+		
 		Pool storage pool = pools[poolId];
+		if (!pool.isActive) {
+			return 0;
+		}
+		
 		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
 			if (pool.lockPeriods[i] == lockPeriod) {
 				return pool.rewardRates[i];
 			}
 		}
 		return 0;
+	}
+
+	/**
+	 * @dev Get all supported lock periods and reward rates for a pool
+	 * @param poolId The pool to query
+	 * @return lockPeriods The supported lock periods
+	 * @return rewardRates The corresponding reward rates
+	 */
+	function getPoolLockPeriods(uint256 poolId) 
+		external 
+		view 
+		returns (uint256[] memory, uint256[] memory) 
+	{
+		require(poolId < pools.length, "Invalid pool ID");
+		Pool storage pool = pools[poolId];
+		return (pool.lockPeriods, pool.rewardRates);
 	}
 
 	// Function to get total locked users
@@ -535,13 +589,14 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 */
 	function emergencyUnlockAll() external onlyOwner {
 		for (uint256 i = 0; i < lockedUsers.length; i++) {
-			for (uint256 j = 0; j < userLocks[lockedUsers[i]].length; j++) {
-				LockInfo storage lockInfo = userLocks[lockedUsers[i]][j];
-				if (lockInfo.isLocked) {
+			address user = lockedUsers[i];
+			for (uint256 j = 0; j < userLocks[user].length; j++) {
+				LockInfo storage lockInfo = userLocks[user][j];
+				if (lockInfo.isLocked && lockInfo.amount > 0) {
 					lockInfo.isLocked = false;
 					lockInfo.unlockTime = block.timestamp;
 					emit Unlocked(
-						lockedUsers[i],
+						user,
 						lockInfo.lockId,
 						lockInfo.amount,
 						lockInfo.poolId
@@ -549,6 +604,9 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 				}
 			}
 		}
+		
+		// Note: We leave users in the lockedUsers array because their tokens are still in the contract
+		// They will be removed when they unstake through the _cleanUpUserIfNeeded function
 	}
 
 	/**
