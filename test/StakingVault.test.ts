@@ -13,12 +13,13 @@ describe("StakingVault", function () {
   let owner: SignerWithAddress;
   let user1: SignerWithAddress;
   let user2: SignerWithAddress;
+  let user3: SignerWithAddress;
 
   const WEEK = 7 * 24 * 60 * 60;
   const MONTH = 30 * 24 * 60 * 60;
 
   beforeEach(async function () {
-    [owner, user1, user2] = await ethers.getSigners();
+    [owner, user1, user2, user3] = await ethers.getSigners();
 
     // Deploy RewardToken
     const RewardToken = await ethers.getContractFactory("RewardToken");
@@ -837,7 +838,7 @@ describe("StakingVault", function () {
       expect(user2Rewards).to.be.gte(user2RewardsBefore);
       
       // Check lockedUsers is updated
-      expect(await stakingVault.getTotalLockedUsers()).to.equal(2);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
     });
 
     it("Should handle user staking after emergency unlock and previous unstake", async function () {
@@ -1137,6 +1138,9 @@ describe("StakingVault", function () {
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
 
+      // Verify user is added to lockedUsers array only once
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+
       await time.increase(WEEK + 1);
 
       await stakingVault.connect(user1).unstake(0, 0);
@@ -1152,6 +1156,124 @@ describe("StakingVault", function () {
       await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("100"));
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
 
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+    });
+  });
+
+  describe("More User Tracking Tests", function () {
+    beforeEach(async function () {
+      // Mint tokens for users
+      await stakingToken.connect(owner).mint(user1.address, ethers.parseEther("1000"));
+      await stakingToken.connect(owner).mint(user2.address, ethers.parseEther("1000"));
+      await stakingToken.connect(owner).mint(user3.address, ethers.parseEther("1000"));
+      
+      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK, MONTH], [1000, 2000]);
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("500"));
+      await stakingToken.connect(user2).approve(stakingVault.getAddress(), ethers.parseEther("500"));
+      await stakingToken.connect(user3).approve(stakingVault.getAddress(), ethers.parseEther("500"));
+    });
+
+    it("Should correctly handle multiple users in lockedUsers array", async function () {
+      // Initially no users
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
+      
+      // Add first user
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Add second user
+      await stakingVault.connect(user2).stake(0, ethers.parseEther("100"), WEEK);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(2);
+      
+      // Add third user
+      await stakingVault.connect(user3).stake(0, ethers.parseEther("100"), WEEK);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(3);
+      
+      // Fast forward past lock period
+      await time.increase(WEEK + 1);
+      
+      // Remove second user first (testing non-sequential removal)
+      await stakingVault.connect(user2).unstake(0, 0);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(2);
+      
+      // Remove first user
+      await stakingVault.connect(user1).unstake(0, 0);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Remove last user
+      await stakingVault.connect(user3).unstake(0, 0);
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
+    });
+
+    it("Should keep user in lockedUsers when they have locks in multiple pools", async function () {
+      // Add a second pool
+      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK, MONTH], [1000, 2000]);
+      
+      // User stakes in both pools
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+      await stakingVault.connect(user1).stake(1, ethers.parseEther("100"), MONTH);
+      
+      // Only one user should be in lockedUsers array
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Fast forward past first lock period
+      await time.increase(WEEK + 1);
+      
+      // Unstake from first pool
+      await stakingVault.connect(user1).unstake(0, 0);
+      
+      // User should still be in lockedUsers array because of second pool lock
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Fast forward to end of second lock period
+      await time.increase(MONTH - WEEK);
+      
+      // Unstake from second pool
+      await stakingVault.connect(user1).unstake(1, 1);
+      
+      // Now user should be removed from lockedUsers array
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
+    });
+
+    it("Should handle lockedUsers array correctly after emergency unlock", async function () {
+      // Setup multiple users with stakes
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
+      await stakingVault.connect(user2).stake(0, ethers.parseEther("100"), MONTH);
+      await stakingVault.connect(user3).stake(0, ethers.parseEther("100"), MONTH);
+      
+      // Verify users are in lockedUsers array
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(3);
+      
+      // Call emergency unlock
+      await stakingVault.connect(owner).emergencyUnlockAll();
+      
+      // Check all locks are unlocked but users still in lockedUsers array
+      let user1Locks = await stakingVault.getUserLocks(user1.address);
+      expect(user1Locks[0].isLocked).to.be.false;
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(3);
+      
+      // First user unstakes
+      await stakingVault.connect(user1).unstake(0, 0);
+      
+      // With our fix, user1 should now be removed from lockedUsers
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(2);
+      
+      // Second user unstakes
+      await stakingVault.connect(user2).unstake(0, 0);
+      
+      // User2 should now be removed
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Third user unstakes
+      await stakingVault.connect(user3).unstake(0, 0);
+      
+      // All users should be removed now
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
+      
+      // User1 stakes again after emergency unlock and unstake
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("50"), WEEK);
+      
+      // Only user1 should be in the array now
       expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
     });
   });

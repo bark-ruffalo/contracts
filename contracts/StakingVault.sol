@@ -290,6 +290,9 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			// Already unlocked (e.g., via emergencyUnlockAll)
 			// Ensure it hasn't been withdrawn already
 			require(amount > 0, "Tokens already withdrawn");
+			
+			// Check if user needs to be removed from lockedUsers array here too
+			_removeUserFromLockedUsersIfNeeded(msg.sender);
 		}
 
 		// Set amount to 0 to prevent double withdrawals
