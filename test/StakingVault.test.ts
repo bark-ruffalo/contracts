@@ -4,6 +4,7 @@ import { StakingVault, RewardToken, MockERC20 } from "../typechain-types";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { GAS_LIMITS } from "./constants";
+import { EventLog } from "ethers";
 
 describe("StakingVault", function () {
   let stakingVault: StakingVault;
@@ -57,7 +58,7 @@ describe("StakingVault", function () {
         stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: GAS_LIMITS.HIGH }),
       )
         .to.emit(stakingVault, "PoolAdded")
-        .withArgs(0, await stakingToken.getAddress());
+        .withArgs(0, await stakingToken.getAddress(), lockPeriods, rewardRates);
 
       const pool = await stakingVault.pools(0);
       expect(pool.isActive).to.be.true;
@@ -102,9 +103,30 @@ describe("StakingVault", function () {
     it("Should stake tokens correctly", async function () {
       const stakeAmount = ethers.parseEther("100");
 
-      await expect(stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH }))
-        .to.emit(stakingVault, "Staked")
-        .withArgs(user1.address, 0, stakeAmount, WEEK);
+      const tx = await stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      const receipt = await tx.wait();
+      
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      // Verify the Staked event with the enhanced parameters
+      const stakedEvent = receipt.logs.find(
+        log => {
+          const event = log as EventLog;
+          return event.fragment?.name === "Staked" && 
+                 event.args && 
+                 event.args[0] === user1.address && 
+                 event.args[1] === 0n;
+        }
+      ) as EventLog;
+      
+      expect(stakedEvent).to.not.be.undefined;
+      expect(stakedEvent.args[2]).to.equal(stakeAmount); // amount
+      expect(stakedEvent.args[3]).to.equal(BigInt(WEEK)); // lockPeriod
+      expect(stakedEvent.args[4]).to.equal(0n); // lockId
+      
+      // Verify unlock time is approximately current time + lock period
+      const blockTimestamp = await time.latest();
+      expect(stakedEvent.args[5]).to.be.closeTo(BigInt(blockTimestamp) + BigInt(WEEK), 5n); // unlockTime with small variance
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       expect(userLocks[0].amount).to.equal(stakeAmount);
@@ -142,10 +164,33 @@ describe("StakingVault", function () {
     it("Should claim rewards correctly", async function () {
       await time.increase(WEEK / 2);
 
-      await expect(stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: GAS_LIMITS.HIGH })).to.emit(
-        stakingVault,
-        "RewardsClaimed",
-      );
+      const initialRewards = await stakingVault.calculateRewards(user1.address, 0);
+      expect(initialRewards).to.be.gt(0);
+      
+      const tx = await stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: GAS_LIMITS.HIGH });
+      const receipt = await tx.wait();
+      
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      // Verify the RewardsClaimed event with enhanced parameters
+      const rewardsClaimedEvent = receipt.logs.find(
+        log => {
+          const event = log as EventLog;
+          return event.fragment?.name === "RewardsClaimed" && 
+                 event.args && 
+                 event.args[0] === user1.address && 
+                 event.args[1] === 0n;
+        }
+      ) as EventLog;
+      
+      expect(rewardsClaimedEvent).to.not.be.undefined;
+      // Use be.closeTo for comparison because of small discrepancies in calculated values
+      expect(rewardsClaimedEvent.args[2]).to.be.closeTo(initialRewards, ethers.parseEther("0.01")); // Allow small variance
+      expect(rewardsClaimedEvent.args[3]).to.equal(0n); // lockId
+      
+      // Timestamp should be close to current block time
+      const blockTimestamp = await time.latest();
+      expect(rewardsClaimedEvent.args[4]).to.be.closeTo(BigInt(blockTimestamp), 5n); // timestamp with small variance
 
       const lifetimeRewards = await stakingVault.getLifetimeRewards(user1.address);
       expect(lifetimeRewards).to.be.gt(0);
@@ -172,10 +217,26 @@ describe("StakingVault", function () {
     it("Should allow unstaking after lock period", async function () {
       await time.increase(WEEK);
 
-      await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH })).to.emit(
-        stakingVault,
-        "Unstaked",
-      );
+      const tx = await stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH });
+      const receipt = await tx.wait();
+      
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      // Verify the Unstaked event with enhanced parameters
+      const unstakedEvent = receipt.logs.find(
+        log => {
+          const event = log as EventLog;
+          return event.fragment?.name === "Unstaked" && 
+                 event.args && 
+                 event.args[0] === user1.address && 
+                 event.args[1] === 0n;
+        }
+      ) as EventLog;
+      
+      expect(unstakedEvent).to.not.be.undefined;
+      expect(unstakedEvent.args[2]).to.equal(ethers.parseEther("100")); // amount
+      // args[3] is rewards (variable, so we don't check exact value)
+      expect(unstakedEvent.args[4]).to.equal(0n); // lockId
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       expect(userLocks[0].isLocked).to.be.false;
@@ -192,7 +253,25 @@ describe("StakingVault", function () {
 
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH, { gasLimit: GAS_LIMITS.HIGH });
 
-      await stakingVault.emergencyUnlockAll({ gasLimit: GAS_LIMITS.HIGH });
+      const tx = await stakingVault.emergencyUnlockAll({ gasLimit: GAS_LIMITS.HIGH });
+      const receipt = await tx.wait();
+      
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      // Verify the new EmergencyUnlock event is emitted
+      const emergencyUnlockEvent = receipt.logs.find(
+        log => {
+          const event = log as EventLog;
+          return event.fragment?.name === "EmergencyUnlock" && 
+                 event.args && 
+                 event.args[0] === user1.address && 
+                 event.args[1] === 0n;
+        }
+      ) as EventLog;
+      
+      expect(emergencyUnlockEvent).to.not.be.undefined;
+      expect(emergencyUnlockEvent.args[2]).to.equal(ethers.parseEther("100")); // amount
+      expect(emergencyUnlockEvent.args[3]).to.equal(0n); // poolId
 
       const userLocks = await stakingVault.getUserLocks(user1.address);
       console.log({ userLocks });
@@ -224,10 +303,28 @@ describe("StakingVault", function () {
       await mockToken.mint(await stakingVault.getAddress(), amount, { gasLimit: GAS_LIMITS.HIGH });
 
       const initialBalance = await mockToken.balanceOf(owner.address);
+      const mockTokenAddress = await mockToken.getAddress();
 
-      await stakingVault.recoverTokens(await mockToken.getAddress(), owner.address, amount, {
+      const tx = await stakingVault.recoverTokens(mockTokenAddress, owner.address, amount, {
         gasLimit: GAS_LIMITS.HIGH,
       });
+      const receipt = await tx.wait();
+      
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      // Verify the TokensRecovered event is emitted
+      const tokensRecoveredEvent = receipt.logs.find(
+        log => {
+          const event = log as EventLog;
+          return event.fragment?.name === "TokensRecovered" && 
+                 event.args && 
+                 event.args[0] === mockTokenAddress && 
+                 event.args[1] === owner.address;
+        }
+      ) as EventLog;
+      
+      expect(tokensRecoveredEvent).to.not.be.undefined;
+      expect(tokensRecoveredEvent.args[2]).to.equal(amount); // amount
 
       const finalBalance = await mockToken.balanceOf(owner.address);
       expect(finalBalance - initialBalance).to.equal(amount);
@@ -373,10 +470,34 @@ describe("StakingVault", function () {
       const initialLocks = await stakingVault.getUserLocks(user1.address);
       const initialUnlockTime = initialLocks[0].unlockTime;
       
-      await expect(
-        stakingVault.connect(user1).increaseStake(0, 0, additionalAmount, { gasLimit: GAS_LIMITS.HIGH })
-      ).to.emit(stakingVault, "Staked")
-        .withArgs(user1.address, 0, additionalAmount, WEEK);
+      const tx = await stakingVault.connect(user1).increaseStake(0, 0, additionalAmount, { gasLimit: GAS_LIMITS.HIGH });
+      const receipt = await tx.wait();
+      
+      if (!receipt) throw new Error("Transaction receipt is null");
+      
+      // Find the Staked event - may have changed order so find by specific parameters
+      const stakedEvents = receipt.logs.filter(
+        log => {
+          const event = log as EventLog;
+          return event.fragment?.name === "Staked" && 
+                 event.args && 
+                 event.args[0] === user1.address && 
+                 event.args[1] === 0n;
+        }
+      ).map(log => log as EventLog);
+      
+      // Find the event with the correct stake amount
+      const stakedEvent = stakedEvents.find(event => event.args[2].toString() === additionalAmount.toString());
+      
+      expect(stakedEvent).to.not.be.undefined;
+      if (!stakedEvent) throw new Error("Staked event not found with the correct parameters");
+      
+      expect(stakedEvent.args[3]).to.equal(BigInt(WEEK)); // lockPeriod
+      expect(stakedEvent.args[4]).to.equal(0n); // lockId
+      
+      // Verify unlock time is updated
+      const blockTimestamp = await time.latest();
+      expect(stakedEvent.args[5]).to.be.closeTo(BigInt(blockTimestamp) + BigInt(WEEK), 5n); // unlockTime with small variance
 
       // Check user's updated lock
       const userLocks = await stakingVault.getUserLocks(user1.address);
@@ -719,57 +840,51 @@ describe("StakingVault", function () {
   });
 
   describe("Reentrancy Protection", function () {
-    let attackerContract: SignerWithAddress;
-
     beforeEach(async function () {
-      [, , , attackerContract] = await ethers.getSigners();
-      
-      const lockPeriods = [WEEK];
-      const rewardRates = [100];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
-        gasLimit: GAS_LIMITS.HIGH,
-      });
-      
-      // Grant minter role to the attacker for this test
-      await rewardToken.grantRole(await rewardToken.MINTER_ROLE(), attackerContract.address, { gasLimit: GAS_LIMITS.LOW });
-      
-      // Mint tokens to attacker
-      await stakingToken.mint(attackerContract.address, ethers.parseEther("1000"), { gasLimit: GAS_LIMITS.LOW });
-      await stakingToken.connect(attackerContract).approve(await stakingVault.getAddress(), ethers.parseEther("1000"), { gasLimit: GAS_LIMITS.LOW });
+      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK], [1000]);
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("200"));
     });
 
     it("Should protect against reentrancy in unstake", async function () {
       // First stake some tokens
-      await stakingVault.connect(attackerContract).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
       
       // Advance time to complete lock period
       await time.increase(WEEK + 1);
       
       // A real attacker would use a contract, but here we're just verifying the nonReentrant modifier works
-      const tx = stakingVault.connect(attackerContract).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH });
+      const tx = stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH });
       await expect(tx).to.not.be.reverted;
     });
 
     it("Should protect against reentrancy in claimRewards", async function () {
       // First stake some tokens
-      await stakingVault.connect(attackerContract).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
       
       // Advance time to generate rewards
       await time.increase(WEEK / 2);
       
       // A real attacker would use a contract, but here we're just verifying the nonReentrant modifier works
-      const tx = stakingVault.connect(attackerContract).claimRewards(0, 0, { gasLimit: GAS_LIMITS.HIGH });
+      const tx = stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: GAS_LIMITS.HIGH });
       await expect(tx).to.not.be.reverted;
+    });
+
+    it("Should protect against reentrancy in increaseStake", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      await expect(
+        stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("50"))
+      ).to.not.be.reverted;
+
+      const lockInfo = await stakingVault.getUserLocks(user1.address);
+      expect(lockInfo[0].amount).to.equal(ethers.parseEther("150"));
     });
   });
 
   describe("Rewards Calculation Edge Cases", function () {
     beforeEach(async function () {
-      const lockPeriods = [WEEK, MONTH];
-      const rewardRates = [100, 200];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
-        gasLimit: GAS_LIMITS.HIGH,
-      });
+      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK], [1000]);
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("100"));
     });
 
     it("Should calculate rewards correctly for very small time periods", async function () {
@@ -805,27 +920,121 @@ describe("StakingVault", function () {
     });
 
     it("Should handle reward rate updates correctly", async function () {
-      // Stake with original reward rate
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Advance time
       await time.increase(WEEK / 4);
-      
-      // Calculate rewards with original rate
       const originalRewards = await stakingVault.calculateRewards(user1.address, 0);
-      
-      // Update reward rates
-      const newRewardRates = [200, 400]; // Double the original rates
+
+      const newRewardRates = [2000]; // Corrected to be higher than original
       await stakingVault.updateRewardRates(0, newRewardRates, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Advance time further
+
       await time.increase(WEEK / 4);
-      
-      // Rewards should be higher than expected with original rate due to the update
       const totalRewards = await stakingVault.calculateRewards(user1.address, 0);
-      
-      // Should be higher than double the original rewards due to higher rate for the second quarter
       expect(totalRewards).to.be.gt(originalRewards * 2n);
+    });
+
+    it("Should revert staking with zero lock period", async function () {
+      await expect(
+        stakingVault.connect(user1).stake(0, ethers.parseEther("100"), 0)
+      ).to.be.revertedWith("Invalid lock period");
+    });
+
+    it("Should revert staking with zero amount", async function () {
+      await expect(
+        stakingVault.connect(user1).stake(0, 0, WEEK)
+      ).to.be.revertedWith("Amount must be greater than zero");
+    });
+
+    it("Should yield zero rewards immediately after staking", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      const rewards = await stakingVault.calculateRewards(user1.address, 0);
+      expect(rewards).to.equal(0);
+    });
+  });
+
+  describe("User Tracking and Removal", function () {
+    beforeEach(async function () {
+      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK, MONTH], [1000, 2000]);
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("500"));
+    });
+
+    it("Should correctly remove user from lockedUsers after all locks are inactive", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
+
+      // First increase time to unstake the WEEK lock
+      await time.increase(WEEK + 1);
+      await stakingVault.connect(user1).unstake(0, 0);
+      
+      // Now increase time to unstake the MONTH lock
+      await time.increase(MONTH - WEEK);
+      await stakingVault.connect(user1).unstake(0, 1);
+
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
+    });
+
+    it("Should not have duplicates or stale entries in lockedUsers", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
+
+      await time.increase(WEEK + 1);
+
+      await stakingVault.connect(user1).unstake(0, 0);
+
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+
+      await time.increase(MONTH - WEEK);
+
+      await stakingVault.connect(user1).unstake(0, 1);
+
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
+
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("100"));
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+    });
+  });
+
+  describe("Multiple Operations Interference", function () {
+    beforeEach(async function () {
+      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK], [1000]);
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("500")); // Increased allowance
+    });
+
+    it("Should handle multiple rapid stakes and unstake operations", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      await time.increase(WEEK + 1);
+
+      await stakingVault.connect(user1).unstake(0, 0);
+      await stakingVault.connect(user1).unstake(0, 1);
+
+      expect(await stakingVault.getActiveStakedBalance(user1.address)).to.equal(0);
+    });
+
+    it("Should handle multiple rapid increases in stake amount", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      await stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("50"));
+      await stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("50"));
+
+      const lockInfo = await stakingVault.getUserLocks(user1.address);
+      expect(lockInfo[0].amount).to.equal(ethers.parseEther("200"));
+    });
+
+    it("Should handle emergency unlock followed by immediate restaking", async function () {
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      await stakingVault.connect(owner).emergencyUnlockAll();
+
+      await stakingVault.connect(user1).unstake(0, 0);
+
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+
+      const lockInfo = await stakingVault.getUserLocks(user1.address);
+      expect(lockInfo[1].amount).to.equal(ethers.parseEther("100"));
     });
   });
 });
