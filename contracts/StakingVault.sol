@@ -196,27 +196,66 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @param poolId The ID of the pool to unstake from.
 	 * @param lockId The ID of the lock to unlock.
 	 */
-	function unstake(uint256 poolId, uint256 lockId) external {
+	function unstake(uint256 poolId, uint256 lockId) external nonReentrant {
 		require(poolId < pools.length, "Invalid pool ID");
 		require(lockId < userLocks[msg.sender].length, "Invalid lock ID");
+		
+		LockInfo storage lockInfo = userLocks[msg.sender][lockId];
+		require(lockInfo.poolId == poolId, "Pool ID mismatch");
+		
 		Pool memory pool = pools[poolId];
+		uint256 amount = lockInfo.amount;
 
 		// Calculate pending rewards
 		uint256 pendingRewards = calculateRewards(msg.sender, lockId);
 
-		// Unlock tokens
-		(uint256 amount, bool locked) = unlock(msg.sender, lockId);
-		require(!locked, "Lock period not yet over");
+		// Check if already unlocked (could be from emergencyUnlockAll)
+		if (lockInfo.isLocked) {
+			// Normal unlock flow
+			require(block.timestamp >= lockInfo.unlockTime, "Lock period not yet over");
+			lockInfo.isLocked = false;
+			
+			// Check if user has any remaining locked positions
+			bool hasActiveLocks = false;
+			for (uint256 i = 0; i < userLocks[msg.sender].length; i++) {
+				if (i != lockId && userLocks[msg.sender][i].isLocked) {
+					hasActiveLocks = true;
+					break;
+				}
+			}
+			
+			// If no active locks remain, remove user from lockedUsers array
+			if (!hasActiveLocks) {
+				for (uint256 i = 0; i < lockedUsers.length; i++) {
+					if (lockedUsers[i] == msg.sender) {
+						// Swap with the last element
+						lockedUsers[i] = lockedUsers[lockedUsers.length - 1];
+						// Remove the last element
+						lockedUsers.pop();
+						break;
+					}
+				}
+			}
+		} else {
+			// Already unlocked (e.g., via emergencyUnlockAll)
+			// Ensure it hasn't been withdrawn already
+			require(amount > 0, "Tokens already withdrawn");
+		}
 
+		// Set amount to 0 to prevent double withdrawals
+		lockInfo.amount = 0;
+		
 		// Mint rewards and transfer staked tokens back to user
-		rewardToken.mint(msg.sender, pendingRewards);
+		if (pendingRewards > 0) {
+			rewardToken.mint(msg.sender, pendingRewards);
+			// Update lifetime rewards
+			lifetimeRewards[msg.sender] += pendingRewards;
+		}
+		
+		// Transfer tokens back to user
 		pool.stakingToken.safeTransfer(msg.sender, amount);
 
-		// Update lifetime rewards and reset claim time
-		lifetimeRewards[msg.sender] += pendingRewards;
-
 		// Set last claim time
-		LockInfo storage lockInfo = userLocks[msg.sender][lockId];
 		lockInfo.lastClaimTime = block.timestamp;
 
 		emit Unstaked(msg.sender, poolId, amount, pendingRewards);

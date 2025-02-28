@@ -18,7 +18,7 @@ describe("RewardsMarket", function () {
 
     // Deploy RewardToken
     const RewardToken = await ethers.getContractFactory("RewardToken");
-    rewardToken = await RewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
+    rewardToken = await RewardToken.deploy(owner.address, owner.address, { gasLimit: GAS_LIMITS.DEPLOY });
     await rewardToken.waitForDeployment();
 
     // Deploy MockERC20 for testing custom token campaigns

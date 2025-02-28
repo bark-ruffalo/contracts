@@ -21,7 +21,7 @@ describe("StakingVault", function () {
 
     // Deploy RewardToken
     const RewardToken = await ethers.getContractFactory("RewardToken");
-    rewardToken = await RewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
+    rewardToken = await RewardToken.deploy(owner.address, owner.address, { gasLimit: GAS_LIMITS.DEPLOY });
 
     // Deploy Mock ERC20 for staking
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -32,7 +32,7 @@ describe("StakingVault", function () {
     stakingVault = await StakingVault.deploy(await rewardToken.getAddress(), { gasLimit: GAS_LIMITS.DEPLOY });
 
     // Grant minter role to StakingVault
-    await rewardToken.transferOwnership(await stakingVault.getAddress(), { gasLimit: GAS_LIMITS.LOW });
+    await rewardToken.grantRole(await rewardToken.MINTER_ROLE(), await stakingVault.getAddress(), { gasLimit: GAS_LIMITS.LOW });
 
     // Mint staking tokens to users
     const initialBalance = ethers.parseEther("1000");
@@ -165,7 +165,7 @@ describe("StakingVault", function () {
 
     it("Should not allow unstaking before lock period", async function () {
       await expect(stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH })).to.be.revertedWith(
-        "Lock period not over",
+        "Lock period not yet over",
       );
     });
 
@@ -247,7 +247,7 @@ describe("StakingVault", function () {
   describe("Reward Token Management", function () {
     it("Should allow owner to set reward token", async function () {
       const NewRewardToken = await ethers.getContractFactory("RewardToken");
-      const newRewardToken = await NewRewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
+      const newRewardToken = await NewRewardToken.deploy(owner.address, owner.address, { gasLimit: GAS_LIMITS.DEPLOY });
       
       await stakingVault.setRewardToken(await newRewardToken.getAddress(), { gasLimit: GAS_LIMITS.LOW });
       expect(await stakingVault.rewardToken()).to.equal(await newRewardToken.getAddress());
@@ -255,7 +255,7 @@ describe("StakingVault", function () {
 
     it("Should not allow non-owner to set reward token", async function () {
       const NewRewardToken = await ethers.getContractFactory("RewardToken");
-      const newRewardToken = await NewRewardToken.deploy({ gasLimit: GAS_LIMITS.DEPLOY });
+      const newRewardToken = await NewRewardToken.deploy(owner.address, owner.address, { gasLimit: GAS_LIMITS.DEPLOY });
       
       await expect(
         stakingVault.connect(user1).setRewardToken(await newRewardToken.getAddress(), { gasLimit: GAS_LIMITS.LOW })
