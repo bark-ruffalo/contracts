@@ -126,6 +126,12 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			_lockPeriods.length == _rewardRates.length,
 			"Mismatched lock periods and rates"
 		);
+		require(_lockPeriods.length > 0, "Empty lock periods array");
+		
+		// Check that all lock periods are non-zero
+		for (uint256 i = 0; i < _lockPeriods.length; i++) {
+			require(_lockPeriods[i] > 0, "Lock period cannot be zero");
+		}
 
 		uint256 poolId = pools.length;
 
@@ -191,7 +197,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			pool.lockPeriods.length == newRewardRates.length,
 			"Mismatched lock periods and reward rates"
 		);
-
+		
 		pool.rewardRates = newRewardRates;
 
 		emit RewardRatesUpdated(poolId, newRewardRates);
@@ -215,9 +221,8 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		require(pool.isActive, "Pool is not active");
 		require(!pool.isStakingPaused, "Staking is paused for this pool");
 
-		// Determine reward rate
-		uint256 rewardRate = getRewardRate(poolId, _lockPeriod);
-		require(rewardRate > 0, "Invalid lock period");
+		// Check if the lock period is valid
+		require(isValidLockPeriod(poolId, _lockPeriod), "Invalid lock period");
 
 		// Transfer staking tokens to contract
 		pool.stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
@@ -450,7 +455,11 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			lockInfo.poolId,
 			lockInfo.lockPeriod
 		);
-		require(rewardRate > 0, "Invalid lock period.");
+		
+		// Return early if reward rate is zero (lock periods with no rewards)
+		if (rewardRate == 0) {
+			return 0;
+		}
 
 		if (lockInfo.isLocked) {
 			// If the lock is still active, calculate rewards from last claim time to current time
@@ -521,25 +530,34 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	) external view returns (address[] memory) {
 		require(poolId < pools.length, "Invalid pool ID");
 
-		address[] memory poolLockedUsers = new address[](lockedUsers.length);
+		// First, count how many users are in the specified pool
 		uint256 count = 0;
-
 		for (uint256 i = 0; i < lockedUsers.length; i++) {
 			LockInfo[] memory locks = userLocks[lockedUsers[i]];
 			for (uint256 j = 0; j < locks.length; j++) {
 				if (locks[j].poolId == poolId && locks[j].isLocked) {
-					poolLockedUsers[count] = lockedUsers[i];
 					count++;
 					break;
 				}
 			}
 		}
 
-		// Resize the array to fit actual count
+		// Create an array of exactly the right size
 		address[] memory result = new address[](count);
-		for (uint256 i = 0; i < count; i++) {
-			result[i] = poolLockedUsers[i];
+		
+		// Fill the array
+		uint256 resultIndex = 0;
+		for (uint256 i = 0; i < lockedUsers.length && resultIndex < count; i++) {
+			LockInfo[] memory locks = userLocks[lockedUsers[i]];
+			for (uint256 j = 0; j < locks.length; j++) {
+				if (locks[j].poolId == poolId && locks[j].isLocked) {
+					result[resultIndex] = lockedUsers[i];
+					resultIndex++;
+					break;
+				}
+			}
 		}
+		
 		return result;
 	}
 
@@ -758,5 +776,21 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		lockInfo.lastClaimTime = block.timestamp;
 		
 		emit Staked(msg.sender, poolId, additionalAmount, lockInfo.lockPeriod, lockId, lockInfo.unlockTime);
+	}
+
+	/**
+	 * @dev Checks if a lock period is valid for a specific pool.
+	 * @param poolId The ID of the pool to check.
+	 * @param lockPeriod The lock period to check.
+	 * @return True if the lock period is valid for the specified pool, false otherwise.
+	 */
+	function isValidLockPeriod(uint256 poolId, uint256 lockPeriod) internal view returns (bool) {
+		Pool storage pool = pools[poolId];
+		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
+			if (pool.lockPeriods[i] == lockPeriod) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

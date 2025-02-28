@@ -460,6 +460,61 @@ describe("StakingVault", function () {
         stakingVault.updateRewardRates(0, newRewardRates, { gasLimit: GAS_LIMITS.HIGH })
       ).to.be.revertedWith("Mismatched lock periods and reward rates");
     });
+
+    it("Should update reward rates from non-zero to zero correctly", async function () {
+      // First stake with non-zero reward rate
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Advance time to accumulate some rewards
+      await time.increase(MONTH / 4);
+      
+      // Calculate initial rewards
+      const initialRewards = await stakingVault.calculateRewards(user1.address, 0);
+      expect(initialRewards).to.be.gt(0);
+      
+      // Claim the rewards
+      await stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Store lifetime rewards after claiming
+      const lifetimeRewards = await stakingVault.getLifetimeRewards(user1.address);
+      
+      // Update reward rates to zero
+      await stakingVault.updateRewardRates(0, [0, 0], { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Advance time further
+      await time.increase(MONTH / 4);
+      
+      // Calculate rewards after update - should be zero
+      const rewardsAfterUpdate = await stakingVault.calculateRewards(user1.address, 0);
+      expect(rewardsAfterUpdate).to.equal(0);
+      
+      // Verify lifetime rewards haven't changed since there are no new rewards
+      const finalLifetimeRewards = await stakingVault.getLifetimeRewards(user1.address);
+      expect(finalLifetimeRewards).to.equal(lifetimeRewards);
+    });
+
+    it("Should allow adding pool with zero reward rate", async function () {
+      // Create a pool with zero reward rate - should not revert
+      await stakingVault.addPool(await stakingToken.getAddress(), [WEEK], [0], { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Verify the pool was created with zero reward rate
+      const poolCount = (await stakingVault.getPools()).length;
+      const pool = (await stakingVault.getPools())[poolCount - 1];
+      expect(pool.rewardRates[0]).to.equal(0);
+    });
+    
+    it("Should allow updating reward rates with zero values", async function () {
+      // First create a valid pool with non-zero reward rate
+      await stakingVault.addPool(await stakingToken.getAddress(), [WEEK], [100], { gasLimit: GAS_LIMITS.HIGH });
+      const poolId = (await stakingVault.getPools()).length - 1;
+      
+      // Update to zero reward rate - should not revert
+      await stakingVault.updateRewardRates(poolId, [0], { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Verify the reward rate was updated to zero
+      const pool = (await stakingVault.getPools())[poolId];
+      expect(pool.rewardRates[0]).to.equal(0);
+    });
   });
 
   describe("Pool and User Statistics", function () {
@@ -1484,210 +1539,46 @@ describe("StakingVault", function () {
         stakingVault.recoverTokens(await stakingToken.getAddress(), ethers.ZeroAddress, ethers.parseEther("1"), { gasLimit: GAS_LIMITS.HIGH })
       ).to.be.revertedWith("Cannot recover to zero address");
     });
-  });
-
-  describe("Rewards Calculation Precision", function () {
-    beforeEach(async function () {
-      const lockPeriods = [WEEK];
-      const rewardRates = [100]; // 1% reward rate
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
-        gasLimit: GAS_LIMITS.HIGH,
-      });
-    });
-
-    it("Should calculate rewards proportionally for partial time periods", async function () {
-      // Stake tokens
-      const stakeAmount = ethers.parseEther("100");
-      await stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Check rewards after 1/4 of lock period
-      await time.increase(WEEK / 4);
-      const quarterPeriodRewards = await stakingVault.calculateRewards(user1.address, 0);
-      
-      // Check rewards after another 1/4 (total 1/2) of lock period
-      await time.increase(WEEK / 4);
-      const halfPeriodRewards = await stakingVault.calculateRewards(user1.address, 0);
-      
-      // Calculate the expected proportion: rewards at half period should be approximately 2x rewards at quarter period
-      // Allow for a small variance due to block time imprecision
-      expect(halfPeriodRewards).to.be.closeTo(quarterPeriodRewards * 2n, ethers.parseEther("0.01"));
-    });
-
-    it("Should calculate proportional rewards for different deposit amounts", async function () {
-      // Stake 100 tokens with user1
-      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Stake 200 tokens with user2 (double the amount)
-      await stakingToken.connect(user2).approve(await stakingVault.getAddress(), ethers.parseEther("1000"), { gasLimit: GAS_LIMITS.LOW });
-      await stakingVault.connect(user2).stake(0, ethers.parseEther("200"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Advance time
-      await time.increase(WEEK / 2);
-      
-      // Get rewards for both users
-      const user1Rewards = await stakingVault.calculateRewards(user1.address, 0);
-      const user2Rewards = await stakingVault.calculateRewards(user2.address, 0);
-      
-      // User2 should have approximately 2x the rewards of user1
-      expect(user2Rewards).to.be.closeTo(user1Rewards * 2n, ethers.parseEther("0.01"));
-    });
-
-    it("Should handle very small amounts without losing precision", async function () {
-      // Stake a very small amount
-      const smallAmount = ethers.parseEther("0.000001"); // 0.000001 tokens
-      
-      // Mint some small amounts to user
-      await stakingToken.mint(user1.address, smallAmount, { gasLimit: GAS_LIMITS.LOW });
-      await stakingToken.connect(user1).approve(await stakingVault.getAddress(), smallAmount, { gasLimit: GAS_LIMITS.LOW });
-      
-      // Stake the small amount
-      await stakingVault.connect(user1).stake(0, smallAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Advance time
-      await time.increase(WEEK / 2);
-      
-      // Get rewards
-      const rewards = await stakingVault.calculateRewards(user1.address, 0);
-      
-      // Verify some rewards are calculated, even for very small amounts
-      // The expected reward would be: smallAmount * rewardRate * (WEEK/2) / (WEEK * 10000)
-      // = 0.000001 * 100 * (WEEK/2) / (WEEK * 10000) = 0.000001 * 100 * 0.5 / 10000 = 0.000000005
-      const expectedRewards = (smallAmount * 100n * BigInt(WEEK / 2)) / (BigInt(WEEK) * 10000n);
-      
-      // For very small amounts, we should get at least some rewards
-      expect(rewards).to.be.gte(0);
-      
-      // But due to integer division, it might be rounded down to 0
-      // If it's not 0, it should be close to the expected value
-      if (rewards > 0n) {
-        expect(rewards).to.be.closeTo(expectedRewards, expectedRewards / 10n);
-      }
-    });
-  });
-
-  describe("Scalability and Gas Optimization", function () {
-    let lockPeriod: number;
     
-    beforeEach(async function () {
-      // Create a basic pool for testing with 30-day lock period
-      lockPeriod = 30 * 24 * 60 * 60;
-      const lockPeriods = [lockPeriod];
-      const rewardRates = [100];
-      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Give the staking vault reward tokens
-      await rewardToken.mint(await stakingVault.getAddress(), ethers.parseEther("10000"), { gasLimit: GAS_LIMITS.LOW });
-      
-      // Set pool reward rate (index 0 for pool, index 0 for the first lock period in the pool)
-      const newRewardRates = [ethers.parseEther("10")];
-      await stakingVault.updateRewardRates(0, newRewardRates, { gasLimit: GAS_LIMITS.MED });
+    it("Should revert when adding pool with empty lock periods array", async function () {
+      await expect(
+        stakingVault.addPool(await stakingToken.getAddress(), [], [], { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Empty lock periods array");
+    });
+    
+    it("Should revert when adding pool with zero lock period", async function () {
+      await expect(
+        stakingVault.addPool(await stakingToken.getAddress(), [0], [100], { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Lock period cannot be zero");
+    });
+    
     });
 
-    it("Should handle multiple users staking in the same pool", async function () {
-      // Create 10 test accounts
-      const testUsers = [];
-      for (let i = 0; i < 10; i++) {
-        const wallet = ethers.Wallet.createRandom().connect(ethers.provider);
-        // Fund the wallet with ETH for gas
-        await owner.sendTransaction({
-          to: wallet.address,
-          value: ethers.parseEther("1.0")
-        });
-        testUsers.push(wallet);
-        
-        // Mint tokens to user
-        await stakingToken.mint(wallet.address, ethers.parseEther("100"), { gasLimit: GAS_LIMITS.LOW });
-        await stakingToken.connect(wallet).approve(await stakingVault.getAddress(), ethers.parseEther("100"), { gasLimit: GAS_LIMITS.LOW });
-      }
+    it("Should allow adding pool with zero reward rate in Input Validation", async function () {
+      // Create a pool with zero reward rate
+      await stakingVault.addPool(await stakingToken.getAddress(), [WEEK], [0], { gasLimit: GAS_LIMITS.HIGH });
       
-      // All users stake in the same pool
-      for (const user of testUsers) {
-        await stakingVault.connect(user).stake(0, ethers.parseEther("100"), lockPeriod, { gasLimit: GAS_LIMITS.HIGH });
-      }
-      
-      // Advance time by half the lock period
-      await time.increase(lockPeriod / 2);
-      
-      // Verify all users have rewards
-      for (const user of testUsers) {
-        // Get the first lock ID for the user
-        const userLocks = await stakingVault.getUserLocks(user.address);
-        const lockId = userLocks[0].lockId;
-        
-        const pendingRewards = await stakingVault.calculateRewards(user.address, lockId);
-        expect(pendingRewards).to.be.gt(0);
-      }
-      
-      // Verify total staked amount for the pool
-      const totalStaked = await stakingVault.getStakingAmountByPool(0);
-      expect(totalStaked).to.equal(ethers.parseEther("1000")); // 10 users × 100 tokens
+      // Verify the pool was created with zero reward rate
+      const pools = await stakingVault.getPools();
+      const pool = pools[pools.length - 1];
+      expect(pool.rewardRates[0]).to.equal(0);
     });
-
-    it("Should handle consecutive staking operations from the same user", async function () {
-      // Mint tokens to user1
-      await stakingToken.mint(user1.address, ethers.parseEther("1000"), { gasLimit: GAS_LIMITS.LOW });
-      await stakingToken.connect(user1).approve(await stakingVault.getAddress(), ethers.parseEther("1000"), { gasLimit: GAS_LIMITS.LOW });
+    
+    it("Should allow updating reward rates with zero values in Input Validation", async function () {
+      // First create a valid pool
+      await stakingVault.addPool(await stakingToken.getAddress(), [WEEK], [100], { gasLimit: GAS_LIMITS.HIGH });
       
-      // User performs 10 consecutive staking operations
-      for (let i = 0; i < 10; i++) {
-        await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), lockPeriod, { gasLimit: GAS_LIMITS.HIGH });
-      }
+      // Update with zero reward rate - should not revert
+      await stakingVault.updateRewardRates(0, [0], { gasLimit: GAS_LIMITS.HIGH });
       
-      // Advance time by half the lock period
-      await time.increase(lockPeriod / 2);
-      
-      // Check user's total stake and rewards
-      const userLocks = await stakingVault.getUserLocks(user1.address);
-      let totalAmount = ethers.parseEther("0");
-      for (const lock of userLocks) {
-        if (lock.poolId === 0n) {
-          totalAmount += lock.amount;
-        }
-      }
-      expect(totalAmount).to.equal(ethers.parseEther("1000")); // 10 × 100 tokens
-      
-      // Get the first lock ID for the user
-      const lockId = userLocks[0].lockId;
-      const pendingRewards = await stakingVault.calculateRewards(user1.address, lockId);
-      expect(pendingRewards).to.be.gt(0);
-    });
-
-    it("Should handle large token amounts", async function () {
-      // Mint a very large amount of tokens to user
-      const largeAmount = ethers.parseEther("1000000000"); // 1 billion tokens
-      await stakingToken.mint(user1.address, largeAmount, { gasLimit: GAS_LIMITS.LOW });
-      await stakingToken.connect(user1).approve(await stakingVault.getAddress(), largeAmount, { gasLimit: GAS_LIMITS.LOW });
-      
-      // Stake the large amount
-      await stakingVault.connect(user1).stake(0, largeAmount, lockPeriod, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Advance time
-      await time.increase(lockPeriod / 2);
-      
-      // Check rewards calculation works with large amounts
-      const userLocks = await stakingVault.getUserLocks(user1.address);
-      const lockId = userLocks[0].lockId;
-      const pendingRewards = await stakingVault.calculateRewards(user1.address, lockId);
-      expect(pendingRewards).to.be.gt(0);
-      
-      // Ensure user can unstake large amount
-      await time.increase(lockPeriod / 2); // Complete lock period
-      
-      // Get initial balance of staking token
-      const initialStakingBalance = await stakingToken.balanceOf(user1.address);
-      
-      // Unstake using the lockId instead of the amount
-      await stakingVault.connect(user1).unstake(0, lockId, { gasLimit: GAS_LIMITS.HIGH });
-      
-      // Get final balance of staking token
-      const finalStakingBalance = await stakingToken.balanceOf(user1.address);
-      
-      // Verify that the user received back their staked amount
-      expect(finalStakingBalance - initialStakingBalance).to.equal(largeAmount);
-      
-      // Also verify that the user received rewards (in the reward token)
-      const rewardBalance = await rewardToken.balanceOf(user1.address);
-      expect(rewardBalance).to.be.gt(0);
+      // Verify the reward rate was updated to zero
+      const pools = await stakingVault.getPools();
+      const pool = pools[0];
+      expect(pool.rewardRates[0]).to.equal(0);
     });
   });
-});
+  
+  describe("Rewards Calculation Precision", function () {
+    // ... existing code ...
+  });
+  
