@@ -1115,8 +1115,11 @@ describe("StakingVault", function () {
 
   describe("User Tracking and Removal", function () {
     beforeEach(async function () {
-      await stakingVault.connect(owner).addPool(stakingToken.getAddress(), [WEEK, MONTH], [1000, 2000]);
-      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("500"));
+      const lockPeriods = [WEEK, MONTH];
+      const rewardRates = [100, 200];
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
     });
 
     it("Should correctly remove user from lockedUsers after all locks are inactive", async function () {
@@ -1138,6 +1141,10 @@ describe("StakingVault", function () {
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
 
+      // Verify the lock count in user's locks array
+      const userLocks = await stakingVault.getUserLocks(user1.address);
+      expect(userLocks.length).to.equal(2);
+      
       // Verify user is added to lockedUsers array only once
       expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
 
@@ -1157,6 +1164,38 @@ describe("StakingVault", function () {
       await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
 
       expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+    });
+
+    it("Should handle user tracking correctly when increasing stake after partial unstake", async function () {
+      // Initial stakes
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), WEEK);
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH);
+      
+      // Unstake the first position (WEEK lock)
+      await time.increase(WEEK + 1);
+      await stakingVault.connect(user1).unstake(0, 0);
+      
+      // User should still be in lockedUsers (has one active lock)
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Increase stake for the remaining lock
+      await stakingToken.connect(user1).approve(stakingVault.getAddress(), ethers.parseEther("50"));
+      await stakingVault.connect(user1).increaseStake(0, 1, ethers.parseEther("50"));
+      
+      // User should still be in lockedUsers
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(1);
+      
+      // Get updated lock info
+      const locks = await stakingVault.getUserLocks(user1.address);
+      expect(locks[1].isLocked).to.be.true;
+      expect(locks[1].amount).to.equal(ethers.parseEther("150"));
+      
+      // Complete unstake
+      await time.increase(MONTH);
+      await stakingVault.connect(user1).unstake(0, 1);
+      
+      // User should be removed from lockedUsers
+      expect(await stakingVault.getTotalLockedUsers()).to.equal(0);
     });
   });
 
