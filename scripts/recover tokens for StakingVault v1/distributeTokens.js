@@ -80,25 +80,61 @@ const rl = readline.createInterface({
 const args = process.argv.slice(2);
 const SIMULATION_MODE = !args.includes('--doit');
 
+// Track auto-confirm state
+let AUTO_CONFIRM = false;
+
+/**
+ * Prompts the user for confirmation with enhanced options
+ * @param {string} message - The message to display
+ * @returns {Promise<string|boolean>} - 'all', 'cancel', true, or false
+ */
+function promptForConfirmation(message) {
+  // Skip prompt if auto-confirm is enabled
+  if (AUTO_CONFIRM) {
+    // Still log what's happening but with a special indicator
+    console.log("\n----------------------------------------");
+    console.log(`🔄 AUTO-CONFIRM: ${message}`);
+    console.log(`✅ Auto-approved (all option was selected)`);
+    console.log("----------------------------------------");
+    return Promise.resolve(true); // Return true instead of 'all' for consistency
+  }
+  
+  return new Promise((resolve) => {
+    // Make the prompt more visible with separator lines
+    console.log("\n----------------------------------------");
+    rl.question(`${message} (Y/n/a/c - Yes/no/all/cancel): `, (answer) => {
+      const lowercaseAnswer = answer.toLowerCase();
+      
+      if (lowercaseAnswer === 'a') {
+        console.log('🔄 AUTO-CONFIRM ENABLED: All remaining transactions will be approved automatically');
+        AUTO_CONFIRM = true;
+        console.log("----------------------------------------");
+        resolve(true); // Return true instead of 'all' for consistency
+      }
+      else if (lowercaseAnswer === 'c') {
+        console.log('⚠️ CANCELLATION REQUESTED - Distribution will stop...');
+        console.log("----------------------------------------");
+        resolve('cancel');
+      }
+      else if (lowercaseAnswer === 'n') {
+        console.log("----------------------------------------");
+        resolve(false);
+      }
+      else {
+        // Default to yes for any other input including empty string
+        console.log("----------------------------------------");
+        resolve(true);
+      }
+    });
+  });
+}
+
 /**
  * Helper function to format token amounts to human-readable values
  */
 function formatTokenAmount(amount, decimals = 18) {
   const formatted = ethers.formatUnits(amount, decimals);
   return formatted;
-}
-
-/**
- * Prompts the user for confirmation
- * @param {string} message - The message to display
- * @returns {Promise<boolean>} - Whether the user confirmed or not
- */
-function promptForConfirmation(message) {
-  return new Promise((resolve) => {
-    rl.question(`${message} (yes/no): `, (answer) => {
-      resolve(answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y');
-    });
-  });
 }
 
 /**
@@ -119,7 +155,7 @@ async function distributeTokens() {
         '⚠️ WARNING: This will send actual token transactions. Are you sure you want to continue?'
       );
       
-      if (!confirmed) {
+      if (confirmed === 'cancel' || confirmed === false) {
         console.log('Distribution cancelled by user');
         rl.close();
         return;
@@ -144,7 +180,7 @@ async function distributeTokens() {
           `⚠️ Warning: The wallet address (${wallet.address}) doesn't match the expected hot wallet address (${HOT_WALLET_ADDRESS}).`
         );
         const proceed = await promptForConfirmation('Do you want to continue anyway?');
-        if (!proceed) {
+        if (proceed === 'cancel' || proceed === false) {
           console.log('Distribution cancelled by user');
           rl.close();
           return;
@@ -169,7 +205,7 @@ async function distributeTokens() {
       
       for (const poolId in POOL_TOKENS) {
         const token = POOL_TOKENS[poolId];
-        const totalOwed = BigInt(snapshotData.summary.totalStaked[poolId]);
+        const totalOwed = BigInt(snapshotData.summary.totalStaked[poolId] || "0");
         
         // Check balance
         const balance = await tokenContracts[poolId].balanceOf(wallet.address);
@@ -193,15 +229,20 @@ async function distributeTokens() {
       if (!allBalancesSufficient) {
         console.error('❌ Insufficient token balance for at least one pool');
         const proceed = await promptForConfirmation('Do you want to continue anyway? (will likely fail on some transactions)');
-        if (!proceed) {
+        if (proceed === 'cancel' || proceed === false) {
           console.log('Distribution cancelled by user');
           rl.close();
           return;
         }
       }
       
+      // Flag to track if distribution should be cancelled
+      let distributionCancelled = false;
+      
       // Process each pool in the specified order
-      for (const poolId of POOL_ORDER) {
+      poolLoop: for (const poolId of POOL_ORDER) {
+        if (distributionCancelled) break;
+        
         const token = POOL_TOKENS[poolId];
         console.log(`\n=== Processing Pool ${poolId} (${token.symbol}) ===`);
         
@@ -209,7 +250,8 @@ async function distributeTokens() {
         const usersWithTokens = [];
         
         for (const [address, userData] of Object.entries(snapshotData.users)) {
-          const tokenAmount = BigInt(userData.tokens[poolId]);
+          // Safely get token amount, handling missing entries
+          const tokenAmount = BigInt(userData.tokens[poolId] || "0");
           if (tokenAmount > 0) {
             usersWithTokens.push({
               address,
@@ -236,49 +278,158 @@ async function distributeTokens() {
         
         let successCount = 0;
         let failCount = 0;
+        let skippedCount = 0;
         
         // Distribute tokens to each user
         for (let i = 0; i < usersWithTokens.length; i++) {
+          if (distributionCancelled) break;
+          
           const user = usersWithTokens[i];
           console.log(`\n[${i+1}/${usersWithTokens.length}] Processing ${user.address}`);
           console.log(`Amount: ${user.amountReadable} ${token.symbol}`);
           
           try {
             if (SIMULATION_MODE) {
-              // In simulation mode, just log what would happen
-              console.log(`SIMULATION: Would send ${user.amountReadable} ${token.symbol} to ${user.address}`);
+              // In simulation mode, still show the prompt but don't actually send transactions
+              const response = await promptForConfirmation(
+                `SIMULATE: Would you like to send ${user.amountReadable} ${token.symbol} to ${user.address}?`
+              );
+              
+              if (response === 'cancel') {
+                console.log('⛔ Distribution cancelled by user');
+                distributionCancelled = true;
+                break;
+              } else if (response === false) {
+                console.log(`Skipping ${user.address} by user request`);
+                skippedCount++;
+                continue;
+              }
+              
+              // If we get here, response is true (either manual or auto-confirmed)
+              console.log(`✅ SIMULATION: Would send ${user.amountReadable} ${token.symbol} to ${user.address}`);
               successCount++;
             } else {
               // In execution mode, send the actual transaction after confirmation
-              const confirmed = await promptForConfirmation(
+              const response = await promptForConfirmation(
                 `Send ${user.amountReadable} ${token.symbol} to ${user.address}?`
               );
               
-              if (confirmed) {
-                console.log(`Sending ${user.amountReadable} ${token.symbol} to ${user.address}...`);
+              if (response === 'cancel') {
+                console.log('⛔ Distribution cancelled by user');
+                distributionCancelled = true;
+                break;
+              } else if (response === false) {
+                console.log(`Skipping ${user.address} by user request`);
+                skippedCount++;
+                continue;
+              }
+              
+              // If we get here, response is true (either manual or auto-confirmed)
+              console.log(`Sending ${user.amountReadable} ${token.symbol} to ${user.address}...`);
+              
+              // Get the latest nonce before each transaction to avoid nonce issues
+              const currentNonce = await provider.getTransactionCount(wallet.address);
+              console.log(`Using nonce: ${currentNonce}`);
+              
+              // Execute the transaction with explicit nonce
+              const tx = await tokenContracts[poolId].transfer(
+                user.address, 
+                user.amount,
+                { nonce: currentNonce }
+              );
+              console.log(`Transaction sent: ${tx.hash}`);
+              
+              // Wait for transaction to be mined
+              console.log('Waiting for transaction confirmation...');
+              const receipt = await tx.wait();
+              
+              if (receipt.status === 1) {
+                console.log(`✅ Transaction confirmed: ${tx.hash}`);
+                successCount++;
                 
-                // Execute the transaction
-                const tx = await tokenContracts[poolId].transfer(user.address, user.amount);
-                console.log(`Transaction sent: ${tx.hash}`);
+                // Add a small delay between transactions to allow the network to update
+                if (i < usersWithTokens.length - 1) {
+                  console.log('Waiting 2 seconds before next transaction...');
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+              } else {
+                console.error(`❌ Transaction failed: ${tx.hash}`);
+                failCount++;
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Error processing ${user.address}: ${error.message}`);
+            
+            // Check if it's a nonce error and retry with updated nonce
+            if (error.message.includes('nonce') && !SIMULATION_MODE) {
+              console.log('Detected nonce error, attempting to retry with updated nonce...');
+              try {
+                // Get the latest nonce again
+                const updatedNonce = await provider.getTransactionCount(wallet.address);
+                console.log(`Retrying with updated nonce: ${updatedNonce}`);
+                
+                // Retry the transaction with the updated nonce
+                const tx = await tokenContracts[poolId].transfer(
+                  user.address, 
+                  user.amount,
+                  { nonce: updatedNonce }
+                );
+                console.log(`Retry transaction sent: ${tx.hash}`);
                 
                 // Wait for transaction to be mined
                 console.log('Waiting for transaction confirmation...');
                 const receipt = await tx.wait();
                 
                 if (receipt.status === 1) {
-                  console.log(`✅ Transaction confirmed: ${tx.hash}`);
+                  console.log(`✅ Retry successful! Transaction confirmed: ${tx.hash}`);
                   successCount++;
+                  
+                  // Add a slightly longer delay after a retry
+                  if (i < usersWithTokens.length - 1) {
+                    console.log('Waiting 3 seconds before next transaction...');
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                  }
+                  
+                  // Continue to the next user
+                  continue;
                 } else {
-                  console.error(`❌ Transaction failed: ${tx.hash}`);
+                  console.error(`❌ Retry failed: ${tx.hash}`);
                   failCount++;
                 }
-              } else {
-                console.log(`Skipping ${user.address} by user request`);
+              } catch (retryError) {
+                console.error(`❌ Retry failed: ${retryError.message}`);
+                failCount++;
               }
+            } else {
+              failCount++;
             }
-          } catch (error) {
-            console.error(`Error processing ${user.address}: ${error.message}`);
-            failCount++;
+            
+            // Reset auto-confirm for errors to ensure user sees the error
+            const wasAutoConfirm = AUTO_CONFIRM;
+            if (wasAutoConfirm) {
+              AUTO_CONFIRM = false;
+              console.log('🛑 Auto-confirm disabled due to error');
+            }
+            
+            // Ask if user wants to continue after an error
+            const continueAfterError = await promptForConfirmation('Continue with remaining transactions?');
+            
+            if (continueAfterError === 'cancel' || continueAfterError === false) {
+              console.log('⛔ Distribution cancelled after error');
+              distributionCancelled = true;
+              break;
+            }
+            
+            // If user selected "all" again in the error prompt, don't need to restore
+            // Otherwise, restore previous auto-confirm state if it was enabled
+            if (wasAutoConfirm && !AUTO_CONFIRM) {
+              AUTO_CONFIRM = true;
+              console.log('🔄 Auto-confirm re-enabled');
+            }
+            
+            // Add a delay after an error before continuing
+            console.log('Waiting 5 seconds before continuing...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
           }
         }
         
@@ -286,17 +437,27 @@ async function distributeTokens() {
         console.log(`Total users: ${usersWithTokens.length}`);
         console.log(`Successful: ${successCount}`);
         console.log(`Failed: ${failCount}`);
+        console.log(`Skipped: ${skippedCount}`);
+        
+        if (distributionCancelled) {
+          console.log('\n⛔ Distribution was cancelled before completion');
+          break poolLoop;
+        }
       }
       
-      console.log('\n=== Distribution Complete ===');
+      if (distributionCancelled) {
+        console.log('\n⛔ DISTRIBUTION CANCELLED ⛔');
+      } else {
+        console.log('\n=== Distribution Complete ===');
+      }
       
       if (SIMULATION_MODE) {
-        console.log('This was a simulation. To execute real transactions, run with --doit flag');
+        console.log('This was a simulation. Run with --doit flag to execute actual transactions');
       }
       
     } catch (error) {
-      console.error(`Error reading snapshot file: ${error.message}`);
-      console.error('Make sure "snapshot.json" exists in the current directory.');
+      console.error(`Error reading or processing snapshot file: ${error.message}`);
+      console.error('Make sure "snapshot.json" exists in the current directory and has valid data.');
       rl.close();
       process.exit(1);
     }
