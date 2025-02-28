@@ -89,6 +89,31 @@ describe("StakingVault", function () {
       const pool = await stakingVault.pools(0);
       expect(pool.isActive).to.be.false;
     });
+
+    it("Should pause and unpause staking for a specific pool", async function () {
+      const lockPeriods = [WEEK];
+      const rewardRates = [100];
+
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+
+      // Pause staking for the pool
+      await expect(stakingVault.setPoolStakingStatus(0, true, { gasLimit: GAS_LIMITS.HIGH }))
+        .to.emit(stakingVault, "PoolStakingStatusUpdated")
+        .withArgs(0, true);
+
+      const pool = await stakingVault.pools(0);
+      expect(pool.isStakingPaused).to.be.true;
+
+      // Unpause staking for the pool
+      await expect(stakingVault.setPoolStakingStatus(0, false, { gasLimit: GAS_LIMITS.HIGH }))
+        .to.emit(stakingVault, "PoolStakingStatusUpdated")
+        .withArgs(0, false);
+
+      const updatedPool = await stakingVault.pools(0);
+      expect(updatedPool.isStakingPaused).to.be.false;
+    });
   });
 
   describe("Staking", function () {
@@ -140,6 +165,52 @@ describe("StakingVault", function () {
       await expect(
         stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH }),
       ).to.be.revertedWith("Pool is not active");
+    });
+
+    it("Should revert staking when staking is paused for the pool", async function () {
+      await stakingVault.setPoolStakingStatus(0, true, { gasLimit: GAS_LIMITS.HIGH });
+      const stakeAmount = ethers.parseEther("100");
+
+      await expect(
+        stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH }),
+      ).to.be.revertedWith("Staking is paused for this pool");
+    });
+
+    it("Should allow unstaking when staking is paused for the pool", async function () {
+      // First, stake some tokens when staking is not paused
+      await stakingVault.setPoolStakingStatus(0, false, { gasLimit: GAS_LIMITS.HIGH });
+      const stakeAmount = ethers.parseEther("100");
+      await stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH });
+
+      // Then pause staking
+      await stakingVault.setPoolStakingStatus(0, true, { gasLimit: GAS_LIMITS.HIGH });
+
+      // Advance time to unlock period
+      await time.increase(WEEK + 1);
+
+      // Should be able to unstake
+      await expect(
+        stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH })
+      ).to.not.be.reverted;
+
+      // Verify user received their tokens back
+      const userBalance = await stakingToken.balanceOf(user1.address);
+      expect(userBalance).to.be.closeTo(ethers.parseEther("1000"), ethers.parseEther("1"));
+    });
+
+    it("Should revert increaseStake when staking is paused for the pool", async function () {
+      // First, stake some tokens when staking is not paused
+      await stakingVault.setPoolStakingStatus(0, false, { gasLimit: GAS_LIMITS.HIGH });
+      const stakeAmount = ethers.parseEther("100");
+      await stakingVault.connect(user1).stake(0, stakeAmount, WEEK, { gasLimit: GAS_LIMITS.HIGH });
+
+      // Then pause staking
+      await stakingVault.setPoolStakingStatus(0, true, { gasLimit: GAS_LIMITS.HIGH });
+
+      // Should not be able to increase stake
+      await expect(
+        stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("50"), { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Staking is paused for this pool");
     });
   });
 
@@ -836,6 +907,95 @@ describe("StakingVault", function () {
       // Initial balance was 1000 ETH, staked 100 + 50 + 25 = 175 ETH, then unstaked 175 ETH
       // So final balance should be close to 1000 ETH again, accounting for gas fees
       expect(finalBalance).to.be.closeTo(ethers.parseEther("1000"), ethers.parseEther("0.1")); // Allow for small variance due to gas costs
+    });
+
+    it("Should handle pausing and unpausing staking across multiple operations", async function () {
+      // Setup pool and tokens
+      const lockPeriods = [WEEK, MONTH];
+      const rewardRates = [100, 200];
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+
+      // User1 stakes tokens
+      await stakingVault.connect(user1).stake(1, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Get the lock ID for user1's stake
+      const userLocks = await stakingVault.getUserLocks(user1.address);
+      const lockId = userLocks.length - 1; // Get the latest lock ID
+      
+      // User2 tries to stake but owner pauses staking for the pool
+      await stakingVault.setPoolStakingStatus(1, true, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // User2 attempt to stake should fail
+      await expect(
+        stakingVault.connect(user2).stake(1, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Staking is paused for this pool");
+      
+      // User1 should still be able to claim rewards and unstake
+      await time.increase(WEEK / 2);
+      
+      // Calculate rewards
+      const pendingRewards = await stakingVault.calculateRewards(user1.address, lockId);
+      expect(pendingRewards).to.be.gt(0);
+      
+      // Claim rewards
+      await stakingVault.connect(user1).claimRewards(1, lockId, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Owner unpauses staking
+      await stakingVault.setPoolStakingStatus(1, false, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // User2 can now stake
+      await stakingVault.connect(user2).stake(1, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Complete lock period
+      await time.increase(WEEK / 2 + 1);
+      
+      // Both users should be able to unstake
+      await stakingVault.connect(user1).unstake(1, lockId, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Verify balances
+      const user1Balance = await stakingToken.balanceOf(user1.address);
+      expect(user1Balance).to.be.closeTo(ethers.parseEther("1000"), ethers.parseEther("1"));
+    });
+
+    it("Should allow staking in one pool when another pool's staking is paused", async function () {
+      // Setup pools
+      const lockPeriods = [WEEK];
+      const rewardRates = [100];
+      
+      // Add two pools
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+      await stakingVault.addPool(await stakingToken.getAddress(), lockPeriods, rewardRates, {
+        gasLimit: GAS_LIMITS.HIGH,
+      });
+      
+      // Get the pool IDs
+      const pools = await stakingVault.getPools();
+      const firstPoolId = pools.length - 2; // Second-to-last pool
+      const secondPoolId = pools.length - 1; // Last pool
+      
+      // Pause staking in first pool
+      await stakingVault.setPoolStakingStatus(firstPoolId, true, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Should be able to stake in second pool
+      await stakingVault.connect(user1).stake(secondPoolId, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Should not be able to stake in first pool
+      await expect(
+        stakingVault.connect(user1).stake(firstPoolId, ethers.parseEther("100"), WEEK, { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Staking is paused for this pool");
+      
+      // Verify user has a lock in second pool
+      const userLocks = await stakingVault.getUserLocks(user1.address);
+      expect(userLocks).to.have.lengthOf.at.least(1);
+      
+      // Find the lock for the second pool
+      const secondPoolLock = userLocks.find(lock => lock.poolId === BigInt(secondPoolId));
+      expect(secondPoolLock).to.not.be.undefined;
+      expect(secondPoolLock?.amount).to.equal(ethers.parseEther("100"));
     });
   });
 

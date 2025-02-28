@@ -17,6 +17,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256[] lockPeriods; // Supported lock periods
 		uint256[] rewardRates; // Reward rates corresponding to lock periods
 		bool isActive; // Whether the pool is active
+		bool isStakingPaused; // Whether staking is paused for this pool
 	}
 
 	struct LockInfo {
@@ -82,6 +83,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	);
 	event RewardRatesUpdated(uint256 indexed poolId, uint256[] newRewardRates);
 	event PoolStatusUpdated(uint256 indexed poolId, bool isActive);
+	event PoolStakingStatusUpdated(uint256 indexed poolId, bool isStakingPaused);
 	event RewardTokenUpdated(address indexed oldRewardToken, address indexed newRewardToken);
 	event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 	event EmergencyUnlock(address indexed user, uint256 indexed lockId, uint256 amount, uint256 poolId);
@@ -133,7 +135,8 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 				stakingToken: _stakingToken,
 				lockPeriods: _lockPeriods,
 				rewardRates: _rewardRates,
-				isActive: true
+				isActive: true,
+				isStakingPaused: false
 			})
 		);
 		emit PoolAdded(poolId, address(_stakingToken), _lockPeriods, _rewardRates);
@@ -152,6 +155,22 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		pools[poolId].isActive = isActive;
 
 		emit PoolStatusUpdated(poolId, isActive);
+	}
+
+	/**
+	 * @dev Pause or unpause staking operations for a specific pool.
+	 * @param poolId The ID of the pool to update.
+	 * @param isStakingPaused Whether staking should be paused (true) or allowed (false).
+	 * @notice Only callable by the contract owner.
+	 * @notice When staking is paused, users can still unstake and claim rewards.
+	 * @custom:events Emits PoolStakingStatusUpdated event.
+	 */
+	function setPoolStakingStatus(uint256 poolId, bool isStakingPaused) external onlyOwner {
+		require(poolId < pools.length, "Pool does not exist");
+
+		pools[poolId].isStakingPaused = isStakingPaused;
+
+		emit PoolStakingStatusUpdated(poolId, isStakingPaused);
 	}
 
 	/**
@@ -194,6 +213,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		require(poolId < pools.length, "Invalid pool ID");
 		Pool memory pool = pools[poolId];
 		require(pool.isActive, "Pool is not active");
+		require(!pool.isStakingPaused, "Staking is paused for this pool");
 
 		// Determine reward rate
 		uint256 rewardRate = getRewardRate(poolId, _lockPeriod);
@@ -715,6 +735,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		
 		Pool memory pool = pools[poolId];
 		require(pool.isActive, "Pool is not active");
+		require(!pool.isStakingPaused, "Staking is paused for this pool");
 		
 		// Calculate and claim any pending rewards before increasing stake
 		uint256 pendingRewards = calculateRewards(msg.sender, lockId);
