@@ -369,6 +369,10 @@ describe("StakingVault", function () {
       const initialUserBalance = await stakingToken.balanceOf(user1.address);
       const initialVaultBalance = await stakingToken.balanceOf(await stakingVault.getAddress());
       
+      // Get initial lock info to check unlock time
+      const initialLocks = await stakingVault.getUserLocks(user1.address);
+      const initialUnlockTime = initialLocks[0].unlockTime;
+      
       await expect(
         stakingVault.connect(user1).increaseStake(0, 0, additionalAmount, { gasLimit: GAS_LIMITS.HIGH })
       ).to.emit(stakingVault, "Staked")
@@ -377,6 +381,11 @@ describe("StakingVault", function () {
       // Check user's updated lock
       const userLocks = await stakingVault.getUserLocks(user1.address);
       expect(userLocks[0].amount).to.equal(ethers.parseEther("150")); // 100 + 50
+      
+      // Check unlock time was extended
+      expect(userLocks[0].unlockTime).to.be.gt(initialUnlockTime);
+      const currentTime = await time.latest();
+      expect(userLocks[0].unlockTime).to.be.closeTo(BigInt(currentTime) + BigInt(WEEK), 5n); // Allow small variance
 
       // Check token balances
       const finalUserBalance = await stakingToken.balanceOf(user1.address);
@@ -384,6 +393,34 @@ describe("StakingVault", function () {
       
       expect(initialUserBalance - finalUserBalance).to.equal(additionalAmount);
       expect(finalVaultBalance - initialVaultBalance).to.equal(additionalAmount);
+    });
+
+    it("Should reset the lock period when increasing stake", async function () {
+      // Advance time halfway through the lock period
+      await time.increase(WEEK / 2);
+      
+      // Verify we're halfway through
+      const initialLocks = await stakingVault.getUserLocks(user1.address);
+      const currentTime = await time.latest();
+      expect(initialLocks[0].unlockTime - BigInt(currentTime)).to.be.closeTo(BigInt(WEEK / 2), 5n);
+      
+      // Increase stake
+      await stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("50"), { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Check that the unlock time has been reset to a full WEEK from now
+      const userLocksAfter = await stakingVault.getUserLocks(user1.address);
+      const timeAfter = await time.latest();
+      expect(userLocksAfter[0].unlockTime - BigInt(timeAfter)).to.be.closeTo(BigInt(WEEK), 5n);
+      
+      // Try to unstake and expect it to fail since the lock period has been reset
+      await time.increase(WEEK / 2 + 1); // This would be enough time if the lock wasn't reset
+      await expect(
+        stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Lock period not yet over");
+      
+      // Advance the full week and unstake should succeed
+      await time.increase(WEEK / 2);
+      await stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH });
     });
 
     it("Should update rewards correctly when increasing stake", async function () {
@@ -409,6 +446,9 @@ describe("StakingVault", function () {
       // New rewards should start from zero
       const newRewards = await stakingVault.calculateRewards(user1.address, 0);
       expect(newRewards).to.be.lt(initialRewards);
+      
+      // Check that unlockTime was set to current time + full lock period
+      expect(userLocks[0].unlockTime).to.be.closeTo(BigInt(currentTime) + BigInt(WEEK), 5n);
     });
 
     it("Should revert when trying to increase stake for inactive lock", async function () {
@@ -553,8 +593,8 @@ describe("StakingVault", function () {
       await stakingVault.connect(user1).claimRewards(0, 0, { gasLimit: GAS_LIMITS.HIGH });
       const lifetimeRewardsAfterClaim = await stakingVault.getLifetimeRewards(user1.address);
       
-      // Advance to end of lock period
-      await time.increase(WEEK / 2 + 1);
+      // Advance time, but now we need a full WEEK since increasing the stake resets the lock period
+      await time.increase(WEEK);
       
       // Unstake
       const initialBalance = await stakingToken.balanceOf(user1.address);
@@ -626,6 +666,55 @@ describe("StakingVault", function () {
       
       // Check locked amount
       expect(await stakingVault.getStakingAmountByPool(0)).to.equal(ethers.parseEther("150"));
+    });
+
+    it("Should handle lock period reset when repeatedly increasing stake", async function () {
+      // Initial stake with MONTH lock period
+      await stakingVault.connect(user1).stake(0, ethers.parseEther("100"), MONTH, { gasLimit: GAS_LIMITS.HIGH });
+      const initialTime = await time.latest();
+      
+      // Initial unlock time should be about a month from now
+      const userLocksBefore = await stakingVault.getUserLocks(user1.address);
+      expect(userLocksBefore[0].unlockTime).to.be.closeTo(BigInt(initialTime) + BigInt(MONTH), 5n);
+      
+      // Advance halfway through the lock period
+      await time.increase(MONTH / 2);
+      
+      // Increase stake - this should reset the lock period
+      await stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("50"), { gasLimit: GAS_LIMITS.HIGH });
+      const midTime = await time.latest();
+      
+      // Check that unlock time was extended to a full month from now
+      const userLocksMiddle = await stakingVault.getUserLocks(user1.address);
+      expect(userLocksMiddle[0].unlockTime).to.be.closeTo(BigInt(midTime) + BigInt(MONTH), 5n);
+      
+      // Advance halfway through the new lock period
+      await time.increase(MONTH / 2);
+      
+      // Increase stake again - this should reset the lock period again
+      await stakingVault.connect(user1).increaseStake(0, 0, ethers.parseEther("25"), { gasLimit: GAS_LIMITS.HIGH });
+      const lateTime = await time.latest();
+      
+      // Check that unlock time was extended again to a full month from the latest increase
+      const userLocksLate = await stakingVault.getUserLocks(user1.address);
+      expect(userLocksLate[0].unlockTime).to.be.closeTo(BigInt(lateTime) + BigInt(MONTH), 5n);
+      
+      // Try to unstake before the full lock period and expect it to fail
+      await time.increase(MONTH / 2);
+      await expect(
+        stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH })
+      ).to.be.revertedWith("Lock period not yet over");
+      
+      // Advance the remaining lock period and unstake should succeed
+      await time.increase(MONTH / 2);
+      await stakingVault.connect(user1).unstake(0, 0, { gasLimit: GAS_LIMITS.HIGH });
+      
+      // Check final balance - should include all staked tokens
+      const finalBalance = await stakingToken.balanceOf(user1.address);
+      
+      // Initial balance was 1000 ETH, staked 100 + 50 + 25 = 175 ETH, then unstaked 175 ETH
+      // So final balance should be close to 1000 ETH again, accounting for gas fees
+      expect(finalBalance).to.be.closeTo(ethers.parseEther("1000"), ethers.parseEther("0.1")); // Allow for small variance due to gas costs
     });
   });
 

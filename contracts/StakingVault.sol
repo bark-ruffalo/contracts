@@ -617,7 +617,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @param lockId The ID of the lock to increase stake for.
 	 * @param additionalAmount The additional amount of tokens to stake.
 	 * @notice This function allows users to add more tokens to an existing lock without creating a new lock.
-	 * @notice The additional tokens will be subject to the same lock period and reward rate as the original stake.
+	 * @notice The additional tokens will restart the lock period, extending the unlock time as if the entire amount was staked fresh.
 	 * @custom:events Emits Staked event.
 	 */
 	function increaseStake(uint256 poolId, uint256 lockId, uint256 additionalAmount) external whenNotPaused nonReentrant {
@@ -642,8 +642,9 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		// Transfer additional staking tokens to contract
 		pool.stakingToken.safeTransferFrom(msg.sender, address(this), additionalAmount);
 		
-		// Update lock amount and last claim time
+		// Update lock amount, reset unlock time, and update last claim time
 		lockInfo.amount += additionalAmount;
+		lockInfo.unlockTime = block.timestamp + lockInfo.lockPeriod;
 		lockInfo.lastClaimTime = block.timestamp;
 		
 		emit Staked(msg.sender, poolId, additionalAmount, lockInfo.lockPeriod);
