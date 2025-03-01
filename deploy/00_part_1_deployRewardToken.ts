@@ -3,7 +3,7 @@ const { verifyContract } = require("../utils/verification");
 /**
  * Part 1 of the staking system deployment
  * This script only deploys the RewardToken contract
- * 
+ *
  * The RewardToken is an ERC20 token that will be minted by the StakingVault
  * to reward users for staking tokens in the ecosystem
  */
@@ -45,18 +45,23 @@ const deployRewardToken = async function (hre) {
 
   console.log(`\n🔨 RewardToken deployed at: ${rewardTokenDeployment.address}\n`);
 
-  // Only verify contracts on public networks (not localhost/hardhat)
+  // Only verify if this is a new deployment
   if (network !== "localhost" && network !== "hardhat") {
     console.log("\n🔍 Verifying RewardToken contract...\n");
     try {
       await verifyContract(hre, rewardTokenDeployment.address, [deployer, deployer]);
       console.log("✅ RewardToken verified");
     } catch (error) {
-      console.error("❌ Failed to verify RewardToken:", error);
+      const errorString = String(error);
+      if (errorString.includes("Already Verified")) {
+        console.log("📝 Contract already verified:", rewardTokenDeployment.address);
+      } else {
+        console.error("❌ Failed to verify RewardToken:", error);
+      }
     }
   }
 };
 
 module.exports = deployRewardToken;
 module.exports.tags = ["RewardToken"];
-module.exports.dependencies = []; 
+module.exports.dependencies = [];

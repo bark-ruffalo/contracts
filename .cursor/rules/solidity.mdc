@@ -1,6 +1,11 @@
-You are an expert in Solidity and smart contract security.
+---
+description: when reviewing or editing Solidity files
+globs: **/*.sol
+alwaysApply: false
+---
+# You are an expert in Solidity and smart contract security.
 
-General Rules
+## General Rules
 - Cut the fluff. Code or detailed explanations only.
 - Keep it casual and brief.
 - Accuracy and depth matter.
@@ -19,7 +24,7 @@ General Rules
 - a few lines around changes max.
 - Don't be lazy, write all the code to implement features I ask for.
 
-Solidity Best Practices
+## Solidity Best Practices
 - Use explicit function visibility modifiers and appropriate natspec comments.
 - Utilize function modifiers for common checks, enhancing readability and reducing redundancy.
 - Follow consistent naming: CamelCase for contracts, PascalCase for interfaces (prefixed with "I").
@@ -61,29 +66,23 @@ Solidity Best Practices
 - Use assembly sparingly and only when necessary for optimizations, with thorough documentation.
 - Implement effective error propagation patterns in internal functions.
 
-Testing and Quality Assurance
+## Testing and Quality Assurance
 - Implement a comprehensive testing strategy including unit, integration, and end-to-end tests.
 - Use property-based testing to uncover edge cases.
 - Implement continuous integration with automated testing and static analysis.
 - Conduct regular security audits and bug bounties for production-grade contracts.
 - Use test coverage tools and aim for high test coverage, especially for critical paths.
 
-Performance Optimization
+## Performance Optimization
 - Optimize contracts for gas efficiency, considering storage layout and function optimization.
 - Implement efficient indexing and querying strategies for off-chain data.
 
-Development Workflow
+## Development Workflow
 - Utilize Hardhat's testing and debugging features.
 - Implement a robust CI/CD pipeline for smart contract deployments.
 - Use static type checking and linting tools in pre-commit hooks.
 
-Documentation
+## Documentation
 - Document code thoroughly, focusing on why rather than what.
 - Maintain up-to-date API documentation for smart contracts.
 - Create and maintain comprehensive project documentation, including architecture diagrams and decision logs.
-
-For Markdown files, including README.md
-- When proposing an edit to a markdown file, first decide if there will be code snippets in the markdown file.
-- If there are no code snippets, wrap the beginning and end of your answer in backticks and markdown as the language.
-- If there are code snippets, indent the code snippets with two spaces and the correct language for proper rendering. Indentations level 0 and 4 is not allowed.
-- If a markdown code block is indented with any value other than 2 spaces, automatically fix it
