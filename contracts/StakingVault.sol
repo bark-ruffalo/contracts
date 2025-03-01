@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "./RewardToken.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {RewardToken} from "./RewardToken.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	using SafeERC20 for IERC20;
@@ -60,7 +60,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256 lockId,
 		uint256 timestamp
 	);
-
 	event Locked(
 		address indexed user,
 		uint256 indexed lockId,
@@ -88,7 +87,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	event PoolStakingStatusUpdated(uint256 indexed poolId, bool isStakingPaused);
 	event RewardTokenUpdated(address indexed oldRewardToken, address indexed newRewardToken);
 	event TokensRecovered(address indexed token, address indexed to, uint256 amount);
-	event EmergencyUnlock(address indexed user, uint256 indexed lockId, uint256 amount, uint256 poolId);
+	event EmergencyUnlock(uint256 timestamp);
 	event TokenMultiplierUpdated(uint256 indexed poolId, uint256 oldMultiplier, uint256 newMultiplier);
 
 	/**
@@ -290,13 +289,13 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		require(!pool.isStakingPaused, "Staking is paused for this pool");
 
 		// Check if the lock period is valid
-		require(isValidLockPeriod(poolId, _lockPeriod), "Invalid lock period");
+		require(_isValidLockPeriod(poolId, _lockPeriod), "Invalid lock period");
 
 		// Transfer staking tokens to contract
 		pool.stakingToken.safeTransferFrom(msg.sender, address(this), _amount);
 
 		// Lock tokens
-		lock(msg.sender, poolId, _amount, _lockPeriod);
+		_lock(msg.sender, poolId, _amount, _lockPeriod);
 		
 		// Get the lock ID (it will be the index of the newly added lock)
 		uint256 lockId = userLocks[msg.sender].length - 1;
@@ -394,7 +393,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @param amount The amount of tokens to lock.
 	 * @param lockPeriod The duration for which tokens are locked.
 	 */
-	function lock(
+	function _lock(
 		address user,
 		uint256 poolId,
 		uint256 amount,
@@ -452,32 +451,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	}
 
 	/**
-	 * @dev Unlocks the user's tokens for a specific lock ID.
-	 * @param user The address of the user unlocking the tokens.
-	 * @param lockId The ID of the lock to unlock.
-	 * @return The amount of tokens that were unlocked and whether the lock is still active.
-	 * @custom:events Emits Unlocked event.
-	 */
-	function unlock(
-		address user,
-		uint256 lockId
-	) internal returns (uint256, bool) {
-		require(user != address(0), "Invalid user address");
-		require(lockId < userLocks[user].length, "Invalid lock ID");
-
-		LockInfo storage lockInfo = userLocks[user][lockId];
-		require(block.timestamp >= lockInfo.unlockTime, "Lock period not over");
-		require(lockInfo.isLocked, "Lock already unlocked");
-
-		lockInfo.isLocked = false;
-		_removeUserFromLockedUsersIfNeeded(user);
-
-		emit Unlocked(user, lockId, lockInfo.amount, lockInfo.poolId, block.timestamp);
-
-		return (lockInfo.amount, lockInfo.isLocked);
-	}
-
-	/**
 	 * @dev Claims rewards for a specific lock without unlocking the tokens.
 	 * @param poolId The ID of the pool the rewards are being claimed from.
 	 * @param lockId The ID of the lock the rewards are being claimed for.
@@ -522,7 +495,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		Pool storage pool = pools[lockInfo.poolId];
 
 		// Fetch reward rate
-		uint256 rewardRate = getRewardRate(
+		uint256 rewardRate = _getRewardRate(
 			lockInfo.poolId,
 			lockInfo.lockPeriod
 		);
@@ -554,7 +527,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @param lockPeriod The lock period to get the reward rate for.
 	 * @return The reward rate for the specified pool and lock period.
 	 */
-	function getRewardRate(
+	function _getRewardRate(
 		uint256 poolId,
 		uint256 lockPeriod
 	) internal view returns (uint256) {
@@ -701,7 +674,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @notice Gas costs will increase with the number of pools and locked positions.
 	 * @custom:security-note This is a critical function that can override normal staking mechanics.
 	 * @custom:requirements Only callable by contract owner.
-	 * @custom:events Emits Unlocked event for each lock that is modified.
 	 */
 	function emergencyUnlockAll() external onlyOwner {
 		uint256 userCount = lockedUsers.length;
@@ -717,23 +689,10 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 				if (lockInfo.isLocked) {
 					lockInfo.isLocked = false;
 					lockInfo.unlockTime = block.timestamp;
-					emit Unlocked(
-						user,
-						lockInfo.lockId,
-						lockInfo.amount,
-						lockInfo.poolId,
-						block.timestamp
-					);
-					emit EmergencyUnlock(
-						user,
-						lockInfo.lockId,
-						lockInfo.amount,
-						lockInfo.poolId
-					);
 				}
 			}
 		}
-		
+		emit EmergencyUnlock(block.timestamp);		
 		// Keep the lockedUsers array intact - users will be removed as they unstake
 	}
 
@@ -765,12 +724,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 						lockInfo.poolId,
 						block.timestamp
 					);
-					emit EmergencyUnlock(
-						user,
-						lockInfo.lockId,
-						lockInfo.amount,
-						lockInfo.poolId
-					);
 				}
 			}
 		}
@@ -778,7 +731,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 
 	/**
 	 * @dev Pauses the staking functionality.
-	 * @notice Only callable by the contract owner.
 	 */
 	function pause() external onlyOwner {
 		_pause();
@@ -786,7 +738,6 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 
 	/**
 	 * @dev Unpauses the staking functionality.
-	 * @notice Only callable by the contract owner.
 	 */
 	function unpause() external onlyOwner {
 		_unpause();
@@ -856,7 +807,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	 * @param lockPeriod The lock period to check.
 	 * @return True if the lock period is valid for the specified pool, false otherwise.
 	 */
-	function isValidLockPeriod(uint256 poolId, uint256 lockPeriod) internal view returns (bool) {
+	function _isValidLockPeriod(uint256 poolId, uint256 lockPeriod) internal view returns (bool) {
 		Pool storage pool = pools[poolId];
 		for (uint256 i = 0; i < pool.lockPeriods.length; i++) {
 			if (pool.lockPeriods[i] == lockPeriod) {

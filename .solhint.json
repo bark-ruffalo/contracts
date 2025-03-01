@@ -10,7 +10,9 @@
     "explicit-types": ["error"],
     "no-console": "error",
     "reentrancy": "error",
-    "private-vars-leading-underscore": "warn"
+    "private-vars-leading-underscore": "warn",
+    "reason-string": "off",
+    "custom-errors": "off"
   },
   "ignores": ["TestnetToken.sol"]
 }
