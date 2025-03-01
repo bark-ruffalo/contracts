@@ -18,6 +18,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256[] rewardRates; // Reward rates corresponding to lock periods
 		bool isActive; // Whether the pool is active
 		bool isStakingPaused; // Whether staking is paused for this pool
+		uint256 tokenMultiplier; // Multiplier for LP tokens (default: 10000 = 1.0x)
 	}
 
 	struct LockInfo {
@@ -79,7 +80,8 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256 indexed poolId, 
 		address indexed stakingToken,
 		uint256[] lockPeriods,
-		uint256[] rewardRates
+		uint256[] rewardRates,
+		uint256 tokenMultiplier
 	);
 	event RewardRatesUpdated(uint256 indexed poolId, uint256[] newRewardRates);
 	event PoolStatusUpdated(uint256 indexed poolId, bool isActive);
@@ -87,6 +89,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	event RewardTokenUpdated(address indexed oldRewardToken, address indexed newRewardToken);
 	event TokensRecovered(address indexed token, address indexed to, uint256 amount);
 	event EmergencyUnlock(address indexed user, uint256 indexed lockId, uint256 amount, uint256 poolId);
+	event TokenMultiplierUpdated(uint256 indexed poolId, uint256 oldMultiplier, uint256 newMultiplier);
 
 	/**
 	 * @dev Constructor to initialize the contract with the reward token address.
@@ -105,19 +108,18 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 	}
 
 	/**
-	 * @dev Add a new pool for staking.
+	 * @dev Internal function to add a new pool for staking.
 	 * @param _stakingToken The token that will be staked in the pool.
 	 * @param _lockPeriods The array of supported lock periods for the pool.
 	 * @param _rewardRates The corresponding reward rates for each lock period.
-	 * @notice Only callable by the contract owner.
-	 * @notice Lock periods and reward rates must match in length.
-	 * @custom:events Emits PoolAdded event.
+	 * @param _tokenMultiplier Multiplier for LP tokens (10000 = 1.0x).
 	 */
-	function addPool(
+	function _addPool(
 		IERC20 _stakingToken,
 		uint256[] calldata _lockPeriods,
-		uint256[] calldata _rewardRates
-	) external onlyOwner {
+		uint256[] calldata _rewardRates,
+		uint256 _tokenMultiplier
+	) internal {
 		require(
 			address(_stakingToken) != address(0),
 			"Invalid staking token address"
@@ -127,6 +129,7 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			"Mismatched lock periods and rates"
 		);
 		require(_lockPeriods.length > 0, "Empty lock periods array");
+		require(_tokenMultiplier > 0, "Multiplier must be greater than zero");
 		
 		// Check that all lock periods are non-zero
 		for (uint256 i = 0; i < _lockPeriods.length; i++) {
@@ -142,10 +145,47 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 				lockPeriods: _lockPeriods,
 				rewardRates: _rewardRates,
 				isActive: true,
-				isStakingPaused: false
+				isStakingPaused: false,
+				tokenMultiplier: _tokenMultiplier
 			})
 		);
-		emit PoolAdded(poolId, address(_stakingToken), _lockPeriods, _rewardRates);
+		emit PoolAdded(poolId, address(_stakingToken), _lockPeriods, _rewardRates, _tokenMultiplier);
+	}
+
+	/**
+	 * @dev Add a new pool for staking with a custom token multiplier.
+	 * @param _stakingToken The token that will be staked in the pool.
+	 * @param _lockPeriods The array of supported lock periods for the pool.
+	 * @param _rewardRates The corresponding reward rates for each lock period.
+	 * @param _tokenMultiplier Multiplier for LP tokens (10000 = 1.0x).
+	 * @notice Only callable by the contract owner.
+	 * @notice Lock periods and reward rates must match in length.
+	 * @custom:events Emits PoolAdded event.
+	 */
+	function addPool(
+		IERC20 _stakingToken,
+		uint256[] calldata _lockPeriods,
+		uint256[] calldata _rewardRates,
+		uint256 _tokenMultiplier
+	) external onlyOwner {
+		_addPool(_stakingToken, _lockPeriods, _rewardRates, _tokenMultiplier);
+	}
+
+	/**
+	 * @dev Add a new pool for staking with default multiplier of 10000 (1.0x).
+	 * @param _stakingToken The token that will be staked in the pool.
+	 * @param _lockPeriods The array of supported lock periods for the pool.
+	 * @param _rewardRates The corresponding reward rates for each lock period.
+	 * @notice Only callable by the contract owner.
+	 * @notice Lock periods and reward rates must match in length.
+	 * @custom:events Emits PoolAdded event.
+	 */
+	function addPool(
+		IERC20 _stakingToken,
+		uint256[] calldata _lockPeriods,
+		uint256[] calldata _rewardRates
+	) external onlyOwner {
+		_addPool(_stakingToken, _lockPeriods, _rewardRates, 10000);
 	}
 
 	/**
@@ -201,6 +241,34 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		pool.rewardRates = newRewardRates;
 
 		emit RewardRatesUpdated(poolId, newRewardRates);
+	}
+
+	/**
+	 * @dev Update the token multiplier for a specific pool.
+	 * @param poolId The ID of the pool to update.
+	 * @param newMultiplier The new multiplier value (10000 = 1.0x).
+	 * @notice Only callable by the contract owner.
+	 * @notice This affects how rewards are calculated for tokens in this pool.
+	 * @custom:events Emits TokenMultiplierUpdated event.
+	 */
+	function updateTokenMultiplier(
+		uint256 poolId,
+		uint256 newMultiplier
+	) external onlyOwner {
+		require(poolId < pools.length, "Pool does not exist");
+		require(newMultiplier > 0, "Multiplier must be greater than zero");
+		
+		Pool storage pool = pools[poolId];
+		uint256 oldMultiplier = pool.tokenMultiplier;
+		
+		// No change, return early
+		if (oldMultiplier == newMultiplier) {
+			return;
+		}
+		
+		pool.tokenMultiplier = newMultiplier;
+
+		emit TokenMultiplierUpdated(poolId, oldMultiplier, newMultiplier);
 	}
 
 	/**
@@ -450,6 +518,9 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 		uint256 currentTime = block.timestamp;
 		LockInfo memory lockInfo = userLocks[user][lockId];
 
+		// Get the pool
+		Pool storage pool = pools[lockInfo.poolId];
+
 		// Fetch reward rate
 		uint256 rewardRate = getRewardRate(
 			lockInfo.poolId,
@@ -468,8 +539,9 @@ contract StakingVault is Ownable, ReentrancyGuard, Pausable {
 			// Prevent underflow if somehow lastClaimTime is in the future
 			if (stakingTime > 0) {
 				// Calculate using multiplication first, then division to prevent precision loss
-				// rewards = (amount * rate * time) / (period * 10000)
-				rewards = (lockInfo.amount * rewardRate * stakingTime) / (lockInfo.lockPeriod * 10000);
+				// rewards = (amount * rate * time * multiplier) / (period * 10000 * 10000)
+				// Note: The multiplier is scaled by 10000, so we need to divide by an additional 10000
+				rewards = (lockInfo.amount * rewardRate * stakingTime * pool.tokenMultiplier) / (lockInfo.lockPeriod * 10000 * 10000);
 			}
 		}
 
