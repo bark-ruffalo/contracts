@@ -354,7 +354,7 @@ async function main() {
   if (simulatedAmounts.length === 0) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-    // Calculate total mPAWSY staked for JSON
+    // Calculate total mPAWSY staked for JSON (excluding Nebu for proportional calculation)
     const totalMpawsyStaked = highStakers.reduce((sum, staker) => {
       if (staker.address.toLowerCase() !== DAO_ADDRESS) {
         return sum + staker.mpawsyStakeNum;
@@ -362,43 +362,74 @@ async function main() {
       return sum;
     }, 0);
 
+    // For the JSON format, we need to simulate the old format with adjusted values
+    // Since we have no modifiers, adjusted = raw
+    let stakersWithAdjusted = highStakers.map(staker => {
+      // Others get proportional share of remaining 85% = 850 per mill total
+      const remainingPerMill = (100 - NEBU_SHARE_PERCENTAGE) * 10;
+      const stakerShareOfRemaining = staker.mpawsyStakeNum / totalMpawsyStaked;
+      const adjustedPerMill = remainingPerMill * stakerShareOfRemaining;
+
+      return {
+        ...staker,
+        adjustedTotal: parseFloat(staker.mpawsyStakeNum.toFixed(6)), // No modifiers, so same as raw
+        adjustedPerMill: adjustedPerMill,
+        rawPerMill: adjustedPerMill, // Same since no modifiers
+      };
+    });
+
+    // Add Nebu with his fixed share if he's not already in the list
+    const nebuExists = stakersWithAdjusted.some(staker => staker.address.toLowerCase() === DAO_ADDRESS);
+    if (!nebuExists) {
+      // We need to get Nebu's actual stake amount
+      // Find Nebu in the original highStakers list or add him with 0 stake
+      let nebuStake = 0;
+      const nebuStaker = highStakers.find(staker => staker.address.toLowerCase() === DAO_ADDRESS);
+      if (nebuStaker) {
+        nebuStake = nebuStaker.mpawsyStakeNum;
+      }
+
+      stakersWithAdjusted.push({
+        address: DAO_ADDRESS,
+        balance: 0n, // Not used in new logic
+        title: "Developer", // Custom title for Nebu
+        poolStakes: nebuStaker ? nebuStaker.poolStakes : {},
+        mpawsyStake: 0n, // Not used in new logic
+        mpawsyStakeNum: nebuStake,
+        adjustedTotal: parseFloat(nebuStake.toFixed(6)),
+        adjustedPerMill: NEBU_SHARE_PERCENTAGE * 10, // 15% = 150 per mill
+        rawPerMill: NEBU_SHARE_PERCENTAGE * 10,
+      });
+    } else {
+      // If Nebu is already in the list, update his adjustedPerMill
+      const nebuIndex = stakersWithAdjusted.findIndex(staker => staker.address.toLowerCase() === DAO_ADDRESS);
+      stakersWithAdjusted[nebuIndex].adjustedPerMill = NEBU_SHARE_PERCENTAGE * 10;
+      stakersWithAdjusted[nebuIndex].rawPerMill = NEBU_SHARE_PERCENTAGE * 10;
+    }
+
+    const totalAdjusted = totalMpawsyStaked; // No modifiers applied
+
     const jsonData = {
       timestamp,
       totalStaked: ethers.formatUnits(totalStaked, 18),
-      totalMpawsyStaked: totalMpawsyStaked.toFixed(2),
-      nebuSharePercentage: NEBU_SHARE_PERCENTAGE,
-      stakers: highStakers.map(staker => {
-        let incomeShare = 0;
-        let percentage = 0;
-
-        if (staker.address.toLowerCase() === DAO_ADDRESS) {
-          incomeShare = (NEBU_SHARE_PERCENTAGE / 100) * TOTAL_INCOME_USD;
-          percentage = NEBU_SHARE_PERCENTAGE;
-        } else {
-          const remainingPercentage = 100 - NEBU_SHARE_PERCENTAGE;
-          const stakerShareOfRemaining = staker.mpawsyStakeNum / totalMpawsyStaked;
-          percentage = remainingPercentage * stakerShareOfRemaining;
-          incomeShare = (percentage / 100) * TOTAL_INCOME_USD;
-        }
-
-        return {
-          address: staker.address,
-          title: staker.title,
-          mpawsyStake: staker.mpawsyStakeNum.toFixed(2),
-          incomeShare: incomeShare.toFixed(2),
-          percentage: percentage.toFixed(4),
-          isNebu: staker.address.toLowerCase() === DAO_ADDRESS,
-          poolStakes: Object.fromEntries(
-            Object.entries(staker.poolStakes).map(([poolId, amount]) => [
-              `${poolId} (${getPoolTokenName(poolId)})`,
-              {
-                raw: ethers.formatUnits(amount, 18),
-                modifier: POOL_MODIFIERS[poolId] || 1.0,
-              },
-            ]),
-          ),
-        };
-      }),
+      totalAdjustedStaked: totalAdjusted.toFixed(2),
+      stakers: stakersWithAdjusted.map(staker => ({
+        address: staker.address,
+        rawHoldings: staker.mpawsyStakeNum.toFixed(6), // Use higher precision like old format
+        rawPerMill: staker.rawPerMill.toFixed(4),
+        adjustedTotal: staker.adjustedTotal.toFixed(2),
+        adjustedPerMill: staker.adjustedPerMill.toFixed(4),
+        poolStakes: Object.fromEntries(
+          Object.entries(staker.poolStakes).map(([poolId, amount]) => [
+            `${poolId} (${getPoolTokenName(poolId)})`,
+            {
+              raw: ethers.formatUnits(amount, 18),
+              adjusted: ethers.formatUnits(amount, 18), // No modifiers, so same as raw
+              modifier: POOL_MODIFIERS[poolId] || 1.0,
+            },
+          ]),
+        ),
+      })),
     };
 
     const fileName = path.join(__dirname, `staking-snapshot-${timestamp}.json`);
